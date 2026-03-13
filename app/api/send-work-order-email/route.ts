@@ -1,6 +1,4 @@
 import nodemailer from 'nodemailer'
-import chromium from '@sparticuz/chromium'
-import { chromium as playwright, type Browser } from 'playwright-core'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -21,8 +19,6 @@ function formatSafe(value?: string | null) {
 }
 
 export async function POST(req: Request) {
-  let browser: Browser | null = null
-
   try {
     const body = (await req.json()) as SendWorkOrderEmailBody
 
@@ -74,45 +70,8 @@ export async function POST(req: Request) {
 
     const requestUrl = new URL(req.url)
     const origin = requestUrl.origin
-    const printableUrl = `${origin}/work-orders/${workOrderId}/pdf`
 
-    const executablePath = await chromium.executablePath()
-
-    browser = await playwright.launch({
-      args: chromium.args,
-      executablePath,
-      headless: true,
-    })
-
-    const page = await browser.newPage()
-
-    await page.goto(printableUrl, {
-      waitUntil: 'networkidle',
-      timeout: 60000,
-    })
-
-    await page.waitForSelector('[data-pdf-ready="true"]', {
-      timeout: 60000,
-    })
-
-    await page.emulateMedia({
-      media: 'print',
-    })
-
-    const pdfBuffer = await page.pdf({
-      format: 'A4',
-      printBackground: true,
-      preferCSSPageSize: true,
-      margin: {
-        top: '10mm',
-        right: '10mm',
-        bottom: '10mm',
-        left: '10mm',
-      },
-    })
-
-    await browser.close()
-    browser = null
+    const pdfPageUrl = `${origin}/work-orders/${workOrderId}/pdf`
 
     await transporter.sendMail({
       from: `KártevőGuru <${mailFrom}>`,
@@ -131,11 +90,11 @@ export async function POST(req: Request) {
       <p style="margin:0 0 16px;">Kedves ${customerName}!</p>
 
       <p style="margin:0 0 16px;">
-        Ezúton küldjük a KártevőGuru által rögzített munkalapot.
+        Ezúton küldjük a KártevőGuru által rögzített munkalap adatait.
       </p>
 
       <p style="margin:0 0 16px;">
-        A részletes munkalapot PDF csatolmányként is mellékeltük ehhez az e-mailhez.
+        A munkalapot az alábbi gombra kattintva tudja megnyitni, letölteni vagy PDF formátumban elmenteni.
       </p>
 
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:0 0 20px;">
@@ -145,6 +104,23 @@ export async function POST(req: Request) {
         <div style="margin-bottom:8px;"><strong>Célzott kártevő:</strong> ${targetPest}</div>
         <div><strong>Helyszín:</strong> ${address}</div>
       </div>
+
+      <div style="margin:24px 0;">
+        <a
+          href="${pdfPageUrl}"
+          style="display:inline-block;background:#12bf3d;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:700;"
+        >
+          Munkalap megnyitása
+        </a>
+      </div>
+
+      <p style="margin:0 0 16px;font-size:14px;color:#475569;">
+        Ha a gomb nem működne, másolja be ezt a linket a böngészőbe:
+      </p>
+
+      <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:#388cc4;">
+        ${pdfPageUrl}
+      </p>
 
       <p style="margin:0 0 16px;">
         Kérdés esetén keressen bizalommal az alábbi elérhetőségeken.
@@ -159,22 +135,30 @@ export async function POST(req: Request) {
   </div>
 </div>
 `,
-      attachments: [
-        {
-          filename: `${orderNumber}.pdf`,
-          content: Buffer.from(pdfBuffer),
-          contentType: 'application/pdf',
-        },
-      ],
+      text: `
+Kedves ${customerName}!
+
+Ezúton küldjük a KártevőGuru által rögzített munkalap adatait.
+
+Munkalap sorszáma: ${orderNumber}
+Szolgáltatás dátuma: ${serviceDate}
+Munka típusa: ${jobType}
+Célzott kártevő: ${targetPest}
+Helyszín: ${address}
+
+A munkalap megnyitása:
+${pdfPageUrl}
+
+Üdvözlettel:
+KártevőGuru
++36 30 602 0650
+info@kartevoguru.hu
+      `.trim(),
     })
 
     return Response.json({ success: true })
   } catch (error) {
     console.error('Email küldési hiba:', error)
-
-    if (browser) {
-      await browser.close().catch(() => {})
-    }
 
     return Response.json(
       {
