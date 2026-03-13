@@ -1,5 +1,9 @@
 import nodemailer from 'nodemailer'
-import { chromium } from 'playwright'
+import puppeteer, { Browser } from 'puppeteer-core'
+import chromium from '@sparticuz/chromium-min'
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 type SendWorkOrderEmailBody = {
   workOrderId?: string | null
@@ -17,7 +21,7 @@ function formatSafe(value?: string | null) {
 }
 
 export async function POST(req: Request) {
-  let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null
+  let browser: Browser | null = null
 
   try {
     const body = (await req.json()) as SendWorkOrderEmailBody
@@ -53,7 +57,7 @@ export async function POST(req: Request) {
 
     if (!smtpHost || !smtpUser || !smtpPass || !mailFrom) {
       return Response.json(
-        { error: 'Hiányos SMTP beállítások a .env.local fájlban.' },
+        { error: 'Hiányos SMTP beállítások.' },
         { status: 500 }
       )
     }
@@ -73,14 +77,18 @@ export async function POST(req: Request) {
 
     const printableUrl = `${origin}/work-orders/${workOrderId}/pdf`
 
-    browser = await chromium.launch({
+    const executablePath = await chromium.executablePath()
+
+    browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath,
       headless: true,
     })
 
     const page = await browser.newPage()
 
     await page.goto(printableUrl, {
-      waitUntil: 'networkidle',
+      waitUntil: 'networkidle2',
       timeout: 60000,
     })
 
@@ -88,7 +96,7 @@ export async function POST(req: Request) {
       timeout: 60000,
     })
 
-    await page.emulateMedia({ media: 'print' })
+    await page.emulateMediaType('print')
 
     const pdfBuffer = await page.pdf({
       format: 'A4',
@@ -111,45 +119,45 @@ export async function POST(req: Request) {
       cc: 'info@kartevoguru.hu',
       subject: `KártevőGuru munkalap – ${orderNumber}`,
       html: `
-        <div style="margin:0;padding:0;background:#f8fafc;font-family:Arial,sans-serif;color:#1f2937;">
-          <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
-            <div style="background:linear-gradient(135deg,#388cc4,#12bf3d);padding:24px;border-radius:16px 16px 0 0;color:#ffffff;">
-              <div style="font-size:13px;opacity:.95;">KártevőGuru</div>
-              <h1 style="margin:8px 0 0;font-size:28px;line-height:1.2;">Munkalap visszaigazolás</h1>
-            </div>
+<div style="margin:0;padding:0;background:#f8fafc;font-family:Arial,sans-serif;color:#1f2937;">
+  <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
+    <div style="background:linear-gradient(135deg,#388cc4,#12bf3d);padding:24px;border-radius:16px 16px 0 0;color:#ffffff;">
+      <div style="font-size:13px;opacity:.95;">KártevőGuru</div>
+      <h1 style="margin:8px 0 0;font-size:28px;line-height:1.2;">Munkalap visszaigazolás</h1>
+    </div>
 
-            <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;padding:24px;">
-              <p style="margin:0 0 16px;">Kedves ${customerName}!</p>
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;padding:24px;">
+      <p style="margin:0 0 16px;">Kedves ${customerName}!</p>
 
-              <p style="margin:0 0 16px;">
-                Ezúton küldjük a KártevőGuru által rögzített munkalapot.
-              </p>
+      <p style="margin:0 0 16px;">
+        Ezúton küldjük a KártevőGuru által rögzített munkalapot.
+      </p>
 
-              <p style="margin:0 0 16px;">
-                A részletes munkalapot PDF csatolmányként is mellékeltük ehhez az e-mailhez.
-              </p>
+      <p style="margin:0 0 16px;">
+        A részletes munkalapot PDF csatolmányként is mellékeltük ehhez az e-mailhez.
+      </p>
 
-              <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:0 0 20px;">
-                <div style="margin-bottom:8px;"><strong>Munkalap sorszáma:</strong> ${orderNumber}</div>
-                <div style="margin-bottom:8px;"><strong>Szolgáltatás dátuma:</strong> ${serviceDate}</div>
-                <div style="margin-bottom:8px;"><strong>Munka típusa:</strong> ${jobType}</div>
-                <div style="margin-bottom:8px;"><strong>Célzott kártevő:</strong> ${targetPest}</div>
-                <div><strong>Helyszín:</strong> ${address}</div>
-              </div>
+      <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:0 0 20px;">
+        <div style="margin-bottom:8px;"><strong>Munkalap sorszáma:</strong> ${orderNumber}</div>
+        <div style="margin-bottom:8px;"><strong>Szolgáltatás dátuma:</strong> ${serviceDate}</div>
+        <div style="margin-bottom:8px;"><strong>Munka típusa:</strong> ${jobType}</div>
+        <div style="margin-bottom:8px;"><strong>Célzott kártevő:</strong> ${targetPest}</div>
+        <div><strong>Helyszín:</strong> ${address}</div>
+      </div>
 
-              <p style="margin:0 0 16px;">
-                Kérdés esetén keressen bizalommal az alábbi elérhetőségeken.
-              </p>
+      <p style="margin:0 0 16px;">
+        Kérdés esetén keressen bizalommal az alábbi elérhetőségeken.
+      </p>
 
-              <div style="margin-top:24px;padding:16px;background:#f8fafc;border-radius:12px;">
-                <div style="font-weight:700;">KártevőGuru</div>
-                <div>Telefon: +36 30 602 0650</div>
-                <div>E-mail: info@kartevoguru.hu</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      `,
+      <div style="margin-top:24px;padding:16px;background:#f8fafc;border-radius:12px;">
+        <div style="font-weight:700;">KártevőGuru</div>
+        <div>Telefon: +36 30 602 0650</div>
+        <div>E-mail: info@kartevoguru.hu</div>
+      </div>
+    </div>
+  </div>
+</div>
+`,
       attachments: [
         {
           filename: `${orderNumber}.pdf`,
