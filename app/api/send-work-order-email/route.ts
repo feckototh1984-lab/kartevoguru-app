@@ -1,7 +1,6 @@
 import nodemailer from 'nodemailer'
-import puppeteer, { Browser } from 'puppeteer-core'
 import chromium from '@sparticuz/chromium'
-
+import { chromium as playwright, type Browser } from 'playwright-core'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -77,16 +76,18 @@ export async function POST(req: Request) {
     const origin = requestUrl.origin
     const printableUrl = `${origin}/work-orders/${workOrderId}/pdf`
 
-    browser = await puppeteer.launch({
+    const executablePath = await chromium.executablePath()
+
+    browser = await playwright.launch({
       args: chromium.args,
-      executablePath: await chromium.executablePath(),
+      executablePath,
       headless: true,
     })
 
     const page = await browser.newPage()
 
     await page.goto(printableUrl, {
-      waitUntil: 'networkidle2',
+      waitUntil: 'networkidle',
       timeout: 60000,
     })
 
@@ -94,7 +95,9 @@ export async function POST(req: Request) {
       timeout: 60000,
     })
 
-    await page.emulateMediaType('print')
+    await page.emulateMedia({
+      media: 'print',
+    })
 
     const pdfBuffer = await page.pdf({
       format: 'A4',
