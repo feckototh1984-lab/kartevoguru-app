@@ -1,6 +1,6 @@
 import nodemailer from 'nodemailer'
 import puppeteer, { Browser } from 'puppeteer-core'
-import chromium from '@sparticuz/chromium-min'
+import chromium from '@sparticuz/chromium'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -74,14 +74,11 @@ export async function POST(req: Request) {
 
     const requestUrl = new URL(req.url)
     const origin = requestUrl.origin
-
     const printableUrl = `${origin}/work-orders/${workOrderId}/pdf`
-
-    const executablePath = await chromium.executablePath()
 
     browser = await puppeteer.launch({
       args: chromium.args,
-      executablePath,
+      executablePath: await chromium.executablePath(),
       headless: true,
     })
 
@@ -176,7 +173,12 @@ export async function POST(req: Request) {
     }
 
     return Response.json(
-      { error: 'Nem sikerült elküldeni az e-mailt.' },
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : 'Nem sikerült elküldeni az e-mailt.',
+      },
       { status: 500 }
     )
   }
