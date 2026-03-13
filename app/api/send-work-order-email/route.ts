@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer'
 import puppeteer, { Browser } from 'puppeteer-core'
 import chromium from '@sparticuz/chromium'
 
+
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
