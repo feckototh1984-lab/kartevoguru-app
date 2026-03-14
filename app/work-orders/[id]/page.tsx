@@ -54,6 +54,40 @@ type WorkOrderDetails = {
   customers: CustomerDetails | CustomerDetails[] | null
 }
 
+function getStatusLabel(status: string | null) {
+  switch (status) {
+    case 'scheduled':
+      return 'Felvéve'
+    case 'in_progress':
+      return 'Folyamatban'
+    case 'done':
+      return 'Lezárva'
+    case 'draft':
+      return 'Piszkozat'
+    case 'cancelled':
+      return 'Sztornózva'
+    default:
+      return status || '—'
+  }
+}
+
+function getStatusClasses(status: string | null) {
+  switch (status) {
+    case 'scheduled':
+      return 'bg-blue-100 text-blue-700'
+    case 'in_progress':
+      return 'bg-amber-100 text-amber-700'
+    case 'done':
+      return 'bg-green-100 text-green-700'
+    case 'draft':
+      return 'bg-slate-100 text-slate-700'
+    case 'cancelled':
+      return 'bg-red-100 text-red-700'
+    default:
+      return 'bg-slate-100 text-slate-700'
+  }
+}
+
 export default function WorkOrderDetailsPage() {
   const params = useParams()
   const id = params?.id as string
@@ -65,8 +99,6 @@ export default function WorkOrderDetailsPage() {
     useState<TechnicianSignature | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorText, setErrorText] = useState('')
-  const [sendingEmail, setSendingEmail] = useState(false)
-  const [emailMessage, setEmailMessage] = useState('')
 
   useEffect(() => {
     async function loadWorkOrder() {
@@ -159,55 +191,6 @@ export default function WorkOrderDetailsPage() {
     loadWorkOrder()
   }, [id])
 
-  async function sendWorkOrderEmail() {
-    if (!workOrder) return
-
-    const customer = Array.isArray(workOrder.customers)
-      ? workOrder.customers[0]
-      : workOrder.customers
-
-    if (!customer?.email) {
-      setEmailMessage('Az ügyfélhez nincs e-mail cím rögzítve.')
-      return
-    }
-
-    try {
-      setSendingEmail(true)
-      setEmailMessage('')
-
-      const response = await fetch('/api/send-work-order-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          workOrderId: workOrder.id,
-          customerEmail: customer.email,
-          customerName: customer.name,
-          orderNumber: workOrder.order_number,
-          serviceDate: workOrder.service_date,
-          address: workOrder.address || customer.address,
-          jobType: workOrder.job_type,
-          targetPest: workOrder.target_pest,
-        }),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        setEmailMessage(result.error || 'Nem sikerült elküldeni az e-mailt.')
-        return
-      }
-
-      setEmailMessage('A munkalap e-mailben sikeresen elküldve.')
-    } catch (error) {
-      console.error(error)
-      setEmailMessage('Váratlan hiba történt e-mail küldés közben.')
-    } finally {
-      setSendingEmail(false)
-    }
-  }
-
   const customer = Array.isArray(workOrder?.customers)
     ? workOrder.customers[0]
     : workOrder?.customers
@@ -218,30 +201,14 @@ export default function WorkOrderDetailsPage() {
         <div>
           <div className="text-sm text-slate-500">KártevőGuru App</div>
           <h1 className="text-3xl font-extrabold tracking-tight">
-            Munkalap adatlap
+            Munka adatlap
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Részletes adatok a kiválasztott munkalapról.
+            Részletes adatok a kiválasztott munkáról.
           </p>
         </div>
 
         <div className="flex gap-3 flex-wrap">
-          <Link
-            href={`/work-orders/${id}/pdf`}
-            className="px-5 py-3 rounded-xl font-semibold bg-[#12bf3d] text-white hover:opacity-90"
-          >
-            PDF generálás
-          </Link>
-
-          <button
-            type="button"
-            onClick={sendWorkOrderEmail}
-            disabled={sendingEmail}
-            className="px-5 py-3 rounded-xl font-semibold bg-[#388cc4] text-white hover:opacity-90 disabled:opacity-60"
-          >
-            {sendingEmail ? 'Küldés...' : 'E-mail küldés'}
-          </button>
-
           <Link
             href="/settings/signature"
             className="px-5 py-3 rounded-xl font-semibold border border-[#388cc4] text-[#388cc4] bg-white hover:bg-[#388cc4]/5"
@@ -253,16 +220,10 @@ export default function WorkOrderDetailsPage() {
             href="/work-orders"
             className="px-5 py-3 rounded-xl font-semibold border border-slate-300 bg-white hover:bg-slate-50"
           >
-            Vissza az archívumhoz
+            Vissza a munkákhoz
           </Link>
         </div>
       </div>
-
-      {emailMessage && (
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          {emailMessage}
-        </div>
-      )}
 
       {loading ? (
         <div className="bg-white rounded-2xl p-6 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
@@ -276,13 +237,13 @@ export default function WorkOrderDetailsPage() {
       ) : !workOrder ? (
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6">
           <p className="font-semibold text-amber-700">
-            A munkalap nem található.
+            A munka nem található.
           </p>
         </div>
       ) : (
         <>
           <div className="bg-gradient-to-r from-[#388cc4] to-[#12bf3d] text-white rounded-2xl p-6 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-            <div className="text-sm opacity-90 mb-2">Munkalap sorszáma</div>
+            <div className="text-sm opacity-90 mb-2">Munka sorszáma</div>
             <div className="text-3xl font-extrabold">
               {workOrder.order_number || 'Nincs sorszám'}
             </div>
@@ -325,8 +286,12 @@ export default function WorkOrderDetailsPage() {
 
                 <div>
                   <div className="text-slate-500 mb-1">Státusz</div>
-                  <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-                    {workOrder.status || '—'}
+                  <span
+                    className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${getStatusClasses(
+                      workOrder.status
+                    )}`}
+                  >
+                    {getStatusLabel(workOrder.status)}
                   </span>
                 </div>
 
@@ -387,7 +352,7 @@ export default function WorkOrderDetailsPage() {
             </section>
           </div>
 
-          {(workOrder.auto_warnings?.length || workOrder.auto_tasks?.length) ? (
+          {workOrder.auto_warnings?.length || workOrder.auto_tasks?.length ? (
             <section className="bg-white rounded-2xl p-5 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
               <h2 className="text-lg font-bold mb-4">
                 Automatikus figyelmeztetések és teendők
@@ -538,6 +503,24 @@ export default function WorkOrderDetailsPage() {
             workOrderId={id}
             initialPhotos={photos}
           />
+
+          <section className="bg-white rounded-2xl p-5 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href={`/work-orders/${id}/pdf`}
+                className="px-5 py-3 rounded-xl font-semibold bg-[#12bf3d] text-white hover:opacity-90"
+              >
+                Munka lezárása
+              </Link>
+
+              <Link
+                href="/work-orders"
+                className="px-5 py-3 rounded-xl font-semibold border border-slate-300 bg-white hover:bg-slate-50"
+              >
+                Vissza a munkákhoz
+              </Link>
+            </div>
+          </section>
         </>
       )}
     </main>
