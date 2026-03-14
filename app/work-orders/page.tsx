@@ -2,7 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+
+type CustomerSummary = {
+  name: string | null
+}
 
 type WorkOrderListRow = {
   id: string
@@ -16,6 +21,7 @@ type WorkOrderListRow = {
   customer_signature_url?: string | null
   signed_at?: string | null
   created_at: string
+  customers: CustomerSummary | CustomerSummary[] | null
 }
 
 function getStatusLabel(status: string | null) {
@@ -25,7 +31,7 @@ function getStatusLabel(status: string | null) {
     case 'in_progress':
       return 'Folyamatban'
     case 'done':
-      return 'Elvégezve'
+      return 'Lezárva'
     case 'draft':
       return 'Piszkozat'
     case 'cancelled':
@@ -52,7 +58,14 @@ function getStatusClasses(status: string | null) {
   }
 }
 
+function getCustomerName(row: WorkOrderListRow) {
+  const customer = Array.isArray(row.customers) ? row.customers[0] : row.customers
+  return customer?.name || 'Ügyfél nélkül'
+}
+
 export default function WorkOrdersArchivePage() {
+  const router = useRouter()
+
   const [rows, setRows] = useState<WorkOrderListRow[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -79,7 +92,10 @@ export default function WorkOrdersArchivePage() {
         pdf_url,
         customer_signature_url,
         signed_at,
-        created_at
+        created_at,
+        customers (
+          name
+        )
       `)
       .order('created_at', { ascending: false })
 
@@ -94,12 +110,6 @@ export default function WorkOrdersArchivePage() {
   }
 
   async function handleCancel(rowId: string) {
-    const confirmed = window.confirm(
-      'Biztosan sztornózni szeretnéd ezt a munkát?'
-    )
-
-    if (!confirmed) return
-
     setUpdatingId(rowId)
 
     const { error } = await supabase
@@ -119,17 +129,9 @@ export default function WorkOrdersArchivePage() {
         row.id === rowId ? { ...row, status: 'cancelled' } : row
       )
     )
-
-    alert('A munka sztornózva lett.')
   }
 
   async function handleRestore(rowId: string) {
-    const confirmed = window.confirm(
-      'Vissza szeretnéd állítani ezt a munkát felvett állapotba?'
-    )
-
-    if (!confirmed) return
-
     setUpdatingId(rowId)
 
     const { error } = await supabase
@@ -149,36 +151,35 @@ export default function WorkOrdersArchivePage() {
         row.id === rowId ? { ...row, status: 'scheduled' } : row
       )
     )
-
-    alert('A munka visszaállítva.')
   }
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase()
 
-    return rows
-      .filter((row) => {
-        if (!showCancelled && row.status === 'cancelled') {
-          return false
-        }
+    return rows.filter((row) => {
+      if (!showCancelled && row.status === 'cancelled') {
+        return false
+      }
 
-        const signatureText = row.customer_signature_url ? 'aláírt' : 'nincs aláírás'
-        const statusText = getStatusLabel(row.status)
+      const customerName = getCustomerName(row)
+      const signatureText = row.customer_signature_url ? 'aláírt' : 'nincs aláírás'
+      const statusText = getStatusLabel(row.status)
 
-        const haystack = [
-          row.order_number || '',
-          row.job_type || '',
-          row.target_pest || '',
-          row.address || '',
-          row.status || '',
-          statusText,
-          signatureText,
-        ]
-          .join(' ')
-          .toLowerCase()
+      const haystack = [
+        customerName,
+        row.order_number || '',
+        row.job_type || '',
+        row.target_pest || '',
+        row.address || '',
+        row.status || '',
+        statusText,
+        signatureText,
+      ]
+        .join(' ')
+        .toLowerCase()
 
-        return q ? haystack.includes(q) : true
-      })
+      return q ? haystack.includes(q) : true
+    })
   }, [rows, search, showCancelled])
 
   return (
@@ -208,7 +209,7 @@ export default function WorkOrdersArchivePage() {
             <h2 className="text-lg font-bold mb-4">Keresés</h2>
             <input
               className="w-full rounded-xl border border-slate-300 px-4 py-3"
-              placeholder="Keresés sorszámra, címre, munka típusára, kártevőre..."
+              placeholder="Keresés ügyfélre, címre, munka típusára, kártevőre..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -230,38 +231,39 @@ export default function WorkOrdersArchivePage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold">Mentett munkák</h2>
           <div className="text-sm text-slate-500">
-            Összesen: <span className="font-semibold text-slate-700">{filteredRows.length}</span> db
+            Összesen:{' '}
+            <span className="font-semibold text-slate-700">
+              {filteredRows.length}
+            </span>{' '}
+            db
           </div>
         </div>
 
         {loading ? (
           <p className="text-sm text-slate-500">Betöltés...</p>
         ) : filteredRows.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-slate-600">
-                  <th className="py-3 pr-3">Sorszám</th>
-                  <th className="py-3 pr-3">Dátum</th>
-                  <th className="py-3 pr-3">Munka típusa</th>
-                  <th className="py-3 pr-3">Kártevő</th>
-                  <th className="py-3 pr-3">Cím</th>
-                  <th className="py-3 pr-3">Státusz</th>
-                  <th className="py-3 pr-3">Aláírás</th>
-                  <th className="py-3 pr-3">Művelet</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((row) => (
-                  <tr key={row.id} className="border-b last:border-b-0 hover:bg-slate-50">
-                    <td className="py-3 pr-3 font-bold text-[#388cc4]">
-                      {row.order_number || '—'}
-                    </td>
-                    <td className="py-3 pr-3">{row.service_date || '—'}</td>
-                    <td className="py-3 pr-3">{row.job_type || '—'}</td>
-                    <td className="py-3 pr-3">{row.target_pest || '—'}</td>
-                    <td className="py-3 pr-3">{row.address || '—'}</td>
-                    <td className="py-3 pr-3">
+          <div className="space-y-4">
+            {filteredRows.map((row) => {
+              const customerName = getCustomerName(row)
+
+              return (
+                <div
+                  key={row.id}
+                  onClick={() => router.push(`/work-orders/${row.id}`)}
+                  className="cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-[1px] hover:shadow-[0_12px_28px_rgba(2,8,20,.08)]"
+                >
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-lg font-bold text-slate-900">
+                        {customerName}
+                      </div>
+
+                      <div className="mt-1 text-sm font-medium text-[#388cc4]">
+                        {row.job_type || 'Munkavégzés'}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
                           row.status
@@ -269,52 +271,93 @@ export default function WorkOrdersArchivePage() {
                       >
                         {getStatusLabel(row.status)}
                       </span>
-                    </td>
-                    <td className="py-3 pr-3">
+
                       {row.customer_signature_url ? (
                         <span className="inline-flex rounded-full bg-green-100 px-3 py-1 text-xs font-semibold text-green-700">
-                          Van
+                          Aláírva
                         </span>
                       ) : (
                         <span className="inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                          Nincs
+                          Nincs aláírás
                         </span>
                       )}
-                    </td>
-                    <td className="py-3 pr-3">
-                      <div className="flex flex-wrap gap-2">
-                        <Link
-                          href={`/work-orders/${row.id}`}
-                          className="inline-flex rounded-xl border border-[#388cc4] px-3 py-2 text-xs font-semibold text-[#388cc4] hover:bg-[#388cc4] hover:text-white"
-                        >
-                          Megnyitás
-                        </Link>
+                    </div>
+                  </div>
 
-                        {row.status === 'cancelled' ? (
-                          <button
-                            type="button"
-                            onClick={() => handleRestore(row.id)}
-                            disabled={updatingId === row.id}
-                            className="inline-flex rounded-xl border border-green-600 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-600 hover:text-white disabled:opacity-50"
-                          >
-                            {updatingId === row.id ? 'Mentés...' : 'Visszaállítás'}
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleCancel(row.id)}
-                            disabled={updatingId === row.id}
-                            className="inline-flex rounded-xl border border-red-300 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-50"
-                          >
-                            {updatingId === row.id ? 'Mentés...' : 'Sztornó'}
-                          </button>
-                        )}
+                  <div className="mt-4 grid gap-3 md:grid-cols-2">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Dátum
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <div className="mt-1 text-sm text-slate-700">
+                        {row.service_date || '—'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Kártevő
+                      </div>
+                      <div className="mt-1 text-sm text-slate-700">
+                        {row.target_pest || '—'}
+                      </div>
+                    </div>
+
+                    <div className="md:col-span-2">
+                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                        Cím
+                      </div>
+                      <div className="mt-1 text-sm text-slate-700">
+                        {row.address || '—'}
+                      </div>
+                    </div>
+
+                    {row.order_number && (
+                      <div className="md:col-span-2">
+                        <div className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                          Sorszám
+                        </div>
+                        <div className="mt-1 text-sm font-semibold text-slate-700">
+                          {row.order_number}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div
+                    className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Link
+                      href={`/work-orders/${row.id}/edit`}
+                      className="inline-flex rounded-xl border border-[#388cc4] px-4 py-2 text-sm font-semibold text-[#388cc4] hover:bg-[#388cc4] hover:text-white"
+                    >
+                      Szerkesztés
+                    </Link>
+
+                    {row.status === 'cancelled' ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRestore(row.id)}
+                        disabled={updatingId === row.id}
+                        className="inline-flex rounded-xl border border-green-600 px-4 py-2 text-sm font-semibold text-green-700 hover:bg-green-600 hover:text-white disabled:opacity-50"
+                      >
+                        {updatingId === row.id ? 'Mentés...' : 'Visszaállítás'}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleCancel(row.id)}
+                        disabled={updatingId === row.id}
+                        className="inline-flex rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-600 hover:text-white disabled:opacity-50"
+                      >
+                        {updatingId === row.id ? 'Mentés...' : 'Sztornó'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         ) : (
           <p className="text-sm text-slate-500">Még nincs mentett munka.</p>
