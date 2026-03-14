@@ -46,6 +46,40 @@ function isSameDay(a: Date, b: Date) {
   return formatDateKey(a) === formatDateKey(b)
 }
 
+function getStatusLabel(status: string | null) {
+  switch (status) {
+    case 'scheduled':
+      return 'Felvéve'
+    case 'in_progress':
+      return 'Folyamatban'
+    case 'done':
+      return 'Elvégezve'
+    case 'draft':
+      return 'Piszkozat'
+    case 'cancelled':
+      return 'Sztornózva'
+    default:
+      return status || '—'
+  }
+}
+
+function getStatusClasses(status: string | null) {
+  switch (status) {
+    case 'scheduled':
+      return 'bg-blue-100 text-blue-700'
+    case 'in_progress':
+      return 'bg-amber-100 text-amber-700'
+    case 'done':
+      return 'bg-green-100 text-green-700'
+    case 'draft':
+      return 'bg-slate-100 text-slate-700'
+    case 'cancelled':
+      return 'bg-red-100 text-red-700'
+    default:
+      return 'bg-slate-100 text-slate-700'
+  }
+}
+
 export default function HomePage() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -78,7 +112,7 @@ export default function HomePage() {
       setLoading(false)
 
       if (workOrdersError) {
-        alert('Nem sikerült betölteni a munkalapokat: ' + workOrdersError.message)
+        alert('Nem sikerült betölteni a munkákat: ' + workOrdersError.message)
         return
       }
 
@@ -98,18 +132,22 @@ export default function HomePage() {
     return new Map(customers.map((customer) => [customer.id, customer.name]))
   }, [customers])
 
+  const activeWorkOrders = useMemo(() => {
+    return workOrders.filter((job) => job.status !== 'cancelled')
+  }, [workOrders])
+
   const selectedDayJobs = useMemo(() => {
-    return workOrders
+    return activeWorkOrders
       .filter((job) => job.service_date === selectedDateKey)
       .sort((a, b) => {
         const timeA = a.service_time || '99:99'
         const timeB = b.service_time || '99:99'
         return timeA.localeCompare(timeB)
       })
-  }, [workOrders, selectedDateKey])
+  }, [activeWorkOrders, selectedDateKey])
 
   const upcomingJobs = useMemo(() => {
-    return workOrders
+    return activeWorkOrders
       .filter((job) => {
         if (job.service_date > todayKey) return true
         if (job.service_date === todayKey && job.service_time) return true
@@ -122,7 +160,7 @@ export default function HomePage() {
         return (a.service_time || '99:99').localeCompare(b.service_time || '99:99')
       })
       .slice(0, 5)
-  }, [workOrders, todayKey])
+  }, [activeWorkOrders, todayKey])
 
   const selectedDayLabel = formatFullHungarianDate(selectedDate)
   const isSelectedToday = isSameDay(selectedDate, today)
@@ -136,12 +174,12 @@ export default function HomePage() {
           </div>
 
           <h1 className="text-3xl font-extrabold tracking-tight md:text-5xl">
-            Digitális munkalap és ügyfélkezelő rendszer
+            Digitális munkakezelő és munkalap rendszer
           </h1>
 
           <p className="mt-4 max-w-2xl text-sm text-white/90 md:text-base">
-            Itt kezeled az ügyfeleket, a munkalapokat, a fotódokumentációt és
-            az aláírásokat egy helyen.
+            Itt kezeled az ügyfeleket, a felvett munkákat, a munkalapokat, a
+            fotódokumentációt és az aláírásokat egy helyen.
           </p>
 
           <div className="mt-6 flex flex-wrap gap-3">
@@ -149,14 +187,14 @@ export default function HomePage() {
               href="/work-orders/new"
               className="rounded-xl bg-white px-5 py-3 font-semibold text-slate-900 shadow-[0_8px_20px_rgba(0,0,0,.18)] hover:opacity-95"
             >
-              + Új munkalap
+              + Új munka felvétele
             </Link>
 
             <Link
               href="/work-orders"
               className="rounded-xl border border-white/70 px-5 py-3 font-semibold text-white hover:bg-white/10"
             >
-              Munkalap archívum
+              Munkák megnyitása
             </Link>
 
             <Link
@@ -175,7 +213,7 @@ export default function HomePage() {
             <div>
               <h2 className="text-xl font-bold text-slate-900">Napi feladatok</h2>
               <p className="mt-1 text-sm text-slate-500">
-                A kiválasztott nap munkalapjai időpont szerint rendezve.
+                A kiválasztott nap rögzített munkái időpont szerint rendezve.
               </p>
             </div>
 
@@ -183,7 +221,7 @@ export default function HomePage() {
               href="/work-orders/new"
               className="inline-flex items-center justify-center rounded-xl bg-[#12bf3d] px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
             >
-              + Új munkalap
+              + Új munka felvétele
             </Link>
           </div>
 
@@ -223,7 +261,7 @@ export default function HomePage() {
             </div>
 
             <div className="mt-1 text-sm text-slate-500">
-              {selectedDayJobs.length} db munkalap ezen a napon
+              {selectedDayJobs.length} db munka ezen a napon
             </div>
           </div>
 
@@ -234,7 +272,7 @@ export default function HomePage() {
               </div>
             ) : selectedDayJobs.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
-                Erre a napra még nincs mentett munkalap.
+                Erre a napra még nincs rögzített munka.
               </div>
             ) : (
               selectedDayJobs.map((job) => (
@@ -243,7 +281,7 @@ export default function HomePage() {
                   href={`/work-orders/${job.id}`}
                   className="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-[1px] hover:shadow-[0_12px_28px_rgba(2,8,20,.08)]"
                 >
-                  <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
                       <div className="text-lg font-bold text-slate-900">
                         {customerMap.get(job.customer_id || '') || 'Ügyfél nélkül'}
@@ -254,8 +292,18 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    <div className="rounded-xl bg-[#12bf3d]/10 px-3 py-2 text-sm font-bold text-[#0b7a2a]">
-                      {job.service_time || 'Időpont nélkül'}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="rounded-xl bg-[#12bf3d]/10 px-3 py-2 text-sm font-bold text-[#0b7a2a]">
+                        {job.service_time || 'Időpont nélkül'}
+                      </div>
+
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
+                          job.status
+                        )}`}
+                      >
+                        {getStatusLabel(job.status)}
+                      </span>
                     </div>
                   </div>
 
@@ -272,7 +320,7 @@ export default function HomePage() {
                   )}
 
                   <div className="mt-4 text-sm font-semibold text-[#388cc4]">
-                    Munkalap megnyitása →
+                    Munka megnyitása →
                   </div>
                 </Link>
               ))
@@ -294,7 +342,7 @@ export default function HomePage() {
                 </div>
               ) : upcomingJobs.length === 0 ? (
                 <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-500">
-                  Nincs közelgő munkalap.
+                  Nincs közelgő munka.
                 </div>
               ) : (
                 upcomingJobs.map((job) => (
@@ -303,7 +351,7 @@ export default function HomePage() {
                     href={`/work-orders/${job.id}`}
                     className="block rounded-2xl border border-slate-200 p-4 transition hover:bg-slate-50"
                   >
-                    <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="text-base font-semibold text-slate-900">
                         {customerMap.get(job.customer_id || '') || 'Ügyfél nélkül'}
                       </div>
@@ -326,6 +374,16 @@ export default function HomePage() {
                         {job.address}
                       </div>
                     )}
+
+                    <div className="mt-3">
+                      <span
+                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
+                          job.status
+                        )}`}
+                      >
+                        {getStatusLabel(job.status)}
+                      </span>
+                    </div>
                   </Link>
                 ))
               )}
@@ -340,14 +398,14 @@ export default function HomePage() {
                 href="/work-orders/new"
                 className="inline-flex items-center justify-center rounded-xl bg-[#12bf3d] px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
               >
-                + Új munkalap
+                + Új munka felvétele
               </Link>
 
               <Link
                 href="/work-orders"
                 className="inline-flex items-center justify-center rounded-xl border border-[#388cc4] px-4 py-3 text-sm font-semibold text-[#388cc4] hover:bg-[#388cc4] hover:text-white"
               >
-                Munkalapok megnyitása
+                Munkák megnyitása
               </Link>
 
               <Link

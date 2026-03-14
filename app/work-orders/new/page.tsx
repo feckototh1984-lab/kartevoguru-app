@@ -66,7 +66,7 @@ export default function NewWorkOrderPage() {
     e.preventDefault()
 
     if (!form.service_date || !form.address || !form.job_type || !form.target_pest) {
-      alert('Töltsd ki a kötelező munkalap mezőket.')
+      alert('Töltsd ki a kötelező mezőket.')
       return
     }
 
@@ -124,8 +124,8 @@ export default function NewWorkOrderPage() {
       address: form.address,
       job_type: form.job_type,
       target_pest: form.target_pest,
-      treatment_description: form.treatment_description,
-      status: 'draft',
+      treatment_description: form.treatment_description || null,
+      status: 'scheduled',
     }
 
     const { error: workOrderError } = await supabase
@@ -135,11 +135,11 @@ export default function NewWorkOrderPage() {
     setLoading(false)
 
     if (workOrderError) {
-      alert('Nem sikerült létrehozni a munkalapot: ' + workOrderError.message)
+      alert('Nem sikerült létrehozni a munkát: ' + workOrderError.message)
       return
     }
 
-    alert('Munkalap sikeresen létrehozva.')
+    alert('Munka sikeresen rögzítve.')
     router.push('/work-orders')
     router.refresh()
   }
@@ -155,9 +155,9 @@ export default function NewWorkOrderPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <div className="text-sm text-slate-500">KártevőGuru App</div>
-          <h1 className="text-3xl font-extrabold tracking-tight">Új munkalap</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight">Új munka felvétele</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Válassz meglévő ügyfelet, vagy hozz létre újat helyben.
+            Rögzítsd előre a kiszállást, majd a helyszínen később elkészítheted a munkalapot.
           </p>
         </div>
 
@@ -165,7 +165,7 @@ export default function NewWorkOrderPage() {
           href="/work-orders"
           className="px-5 py-3 rounded-xl font-semibold border border-slate-300 bg-white hover:bg-slate-50"
         >
-          Vissza az archívumhoz
+          Vissza a munkákhoz
         </Link>
       </div>
 
@@ -315,11 +315,11 @@ export default function NewWorkOrderPage() {
         </div>
 
         <div className="border-t pt-6">
-          <h2 className="text-lg font-bold mb-4">Munkalap adatai</h2>
+          <h2 className="text-lg font-bold mb-4">Munka adatai</h2>
 
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold mb-2">Szolgáltatás dátuma *</label>
+              <label className="block text-sm font-semibold mb-2">Dátum *</label>
               <input
                 type="date"
                 className="w-full border border-slate-300 rounded-xl px-4 py-3"
@@ -375,10 +375,10 @@ export default function NewWorkOrderPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-semibold mb-2">Kezelés leírása</label>
+              <label className="block text-sm font-semibold mb-2">Előzetes megjegyzés / feladatleírás</label>
               <textarea
                 className="w-full border border-slate-300 rounded-xl px-4 py-3 min-h-28"
-                placeholder="Írd le röviden a kezelést..."
+                placeholder="Pl. visszatérő csótányészlelés a konyhában, helyszínen pontosítani kell..."
                 value={form.treatment_description}
                 onChange={(e) =>
                   setForm({ ...form, treatment_description: e.target.value })
@@ -394,7 +394,7 @@ export default function NewWorkOrderPage() {
             disabled={loading}
             className="bg-[#12bf3d] text-white px-5 py-3 rounded-xl font-semibold disabled:opacity-50 hover:opacity-90"
           >
-            {loading ? 'Mentés...' : 'Munkalap létrehozása'}
+            {loading ? 'Mentés...' : 'Munka mentése'}
           </button>
 
           <Link
