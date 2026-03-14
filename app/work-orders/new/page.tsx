@@ -23,6 +23,7 @@ export default function NewWorkOrderPage() {
   const [form, setForm] = useState({
     customer_id: '',
     service_date: '',
+    service_time: '',
     address: '',
     job_type: '',
     target_pest: '',
@@ -106,7 +107,10 @@ export default function NewWorkOrderPage() {
 
       if (customerError || !insertedCustomer) {
         setLoading(false)
-        alert('Nem sikerült létrehozni az új ügyfelet: ' + (customerError?.message || 'Ismeretlen hiba'))
+        alert(
+          'Nem sikerült létrehozni az új ügyfelet: ' +
+            (customerError?.message || 'Ismeretlen hiba')
+        )
         return
       }
 
@@ -116,6 +120,7 @@ export default function NewWorkOrderPage() {
     const payload = {
       customer_id: customerId,
       service_date: form.service_date,
+      service_time: form.service_time || null,
       address: form.address,
       job_type: form.job_type,
       target_pest: form.target_pest,
@@ -138,6 +143,12 @@ export default function NewWorkOrderPage() {
     router.push('/work-orders')
     router.refresh()
   }
+
+  const timeOptions = Array.from({ length: 27 }, (_, i) => {
+    const hour = 7 + Math.floor(i / 2)
+    const minute = i % 2 === 0 ? '00' : '30'
+    return `${String(hour).padStart(2, '0')}:${minute}`
+  })
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
@@ -315,6 +326,22 @@ export default function NewWorkOrderPage() {
                 value={form.service_date}
                 onChange={(e) => setForm({ ...form, service_date: e.target.value })}
               />
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-2">Időpont</label>
+              <select
+                className="w-full border border-slate-300 rounded-xl px-4 py-3"
+                value={form.service_time}
+                onChange={(e) => setForm({ ...form, service_time: e.target.value })}
+              >
+                <option value="">Időpont kiválasztása</option>
+                {timeOptions.map((time) => (
+                  <option key={time} value={time}>
+                    {time}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>

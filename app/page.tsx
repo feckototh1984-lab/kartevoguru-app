@@ -8,6 +8,7 @@ type WorkOrder = {
   id: string
   customer_id: string | null
   service_date: string
+  service_time: string | null
   address: string | null
   job_type: string | null
   target_pest: string | null
@@ -26,32 +27,23 @@ function formatDateKey(date: Date) {
   return `${year}-${month}-${day}`
 }
 
-function startOfWeek(date: Date) {
-  const result = new Date(date)
-  const day = result.getDay()
-  const diff = day === 0 ? -6 : 1 - day
-  result.setDate(result.getDate() + diff)
-  result.setHours(0, 0, 0, 0)
-  return result
-}
-
 function addDays(date: Date, days: number) {
   const result = new Date(date)
   result.setDate(result.getDate() + days)
   return result
 }
 
-function formatMonthLabel(date: Date) {
+function formatFullHungarianDate(date: Date) {
   return new Intl.DateTimeFormat('hu-HU', {
     year: 'numeric',
     month: 'long',
+    day: 'numeric',
+    weekday: 'long',
   }).format(date)
 }
 
-function formatDayLabel(date: Date) {
-  return new Intl.DateTimeFormat('hu-HU', {
-    weekday: 'short',
-  }).format(date)
+function isSameDay(a: Date, b: Date) {
+  return formatDateKey(a) === formatDateKey(b)
 }
 
 export default function HomePage() {
@@ -60,38 +52,28 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true)
 
   const today = useMemo(() => new Date(), [])
+  const [selectedDate, setSelectedDate] = useState(today)
+
   const todayKey = formatDateKey(today)
-
-  const weekStart = useMemo(() => startOfWeek(today), [today])
-
-  const weekDays = useMemo(() => {
-    return Array.from({ length: 7 }, (_, index) => {
-      const date = addDays(weekStart, index)
-      return {
-        date,
-        key: formatDateKey(date),
-        dayLabel: formatDayLabel(date),
-        dayNumber: date.getDate(),
-        isToday: formatDateKey(date) === todayKey,
-      }
-    })
-  }, [weekStart, todayKey])
+  const selectedDateKey = formatDateKey(selectedDate)
 
   useEffect(() => {
     async function loadDashboardData() {
       setLoading(true)
 
-      const [{ data: workOrdersData, error: workOrdersError }, { data: customersData, error: customersError }] =
-        await Promise.all([
-          supabase
-            .from('work_orders')
-            .select('id, customer_id, service_date, address, job_type, target_pest, status')
-            .order('service_date', { ascending: true }),
-          supabase
-            .from('customers')
-            .select('id, name')
-            .order('name', { ascending: true }),
-        ])
+      const [
+        { data: workOrdersData, error: workOrdersError },
+        { data: customersData, error: customersError },
+      ] = await Promise.all([
+        supabase
+          .from('work_orders')
+          .select(
+            'id, customer_id, service_date, service_time, address, job_type, target_pest, status'
+          )
+          .order('service_date', { ascending: true })
+          .order('service_time', { ascending: true }),
+        supabase.from('customers').select('id, name').order('name', { ascending: true }),
+      ])
 
       setLoading(false)
 
@@ -116,31 +98,34 @@ export default function HomePage() {
     return new Map(customers.map((customer) => [customer.id, customer.name]))
   }, [customers])
 
-  const todayJobs = useMemo(() => {
-    return workOrders.filter((job) => job.service_date === todayKey)
-  }, [workOrders, todayKey])
+  const selectedDayJobs = useMemo(() => {
+    return workOrders
+      .filter((job) => job.service_date === selectedDateKey)
+      .sort((a, b) => {
+        const timeA = a.service_time || '99:99'
+        const timeB = b.service_time || '99:99'
+        return timeA.localeCompare(timeB)
+      })
+  }, [workOrders, selectedDateKey])
 
   const upcomingJobs = useMemo(() => {
     return workOrders
-      .filter((job) => job.service_date > todayKey)
+      .filter((job) => {
+        if (job.service_date > todayKey) return true
+        if (job.service_date === todayKey && job.service_time) return true
+        return false
+      })
+      .sort((a, b) => {
+        if (a.service_date !== b.service_date) {
+          return a.service_date.localeCompare(b.service_date)
+        }
+        return (a.service_time || '99:99').localeCompare(b.service_time || '99:99')
+      })
       .slice(0, 5)
   }, [workOrders, todayKey])
 
-  const weeklyJobsMap = useMemo(() => {
-    const map = new Map<string, WorkOrder[]>()
-
-    for (const day of weekDays) {
-      map.set(day.key, [])
-    }
-
-    for (const job of workOrders) {
-      if (map.has(job.service_date)) {
-        map.get(job.service_date)?.push(job)
-      }
-    }
-
-    return map
-  }, [workOrders, weekDays])
+  const selectedDayLabel = formatFullHungarianDate(selectedDate)
+  const isSelectedToday = isSameDay(selectedDate, today)
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8">
@@ -184,140 +169,122 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+      <section className="mt-6 grid gap-6 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-2xl bg-white p-6 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
             <div>
-              <h2 className="text-xl font-bold text-slate-900">Heti áttekintő</h2>
+              <h2 className="text-xl font-bold text-slate-900">Napi feladatok</h2>
               <p className="mt-1 text-sm text-slate-500">
-                A mentett munkalapok automatikusan megjelennek a megfelelő napon.
+                A kiválasztott nap munkalapjai időpont szerint rendezve.
               </p>
             </div>
 
-            <div className="rounded-xl bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
-              {formatMonthLabel(today)}
+            <Link
+              href="/work-orders/new"
+              className="inline-flex items-center justify-center rounded-xl bg-[#12bf3d] px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
+            >
+              + Új munkalap
+            </Link>
+          </div>
+
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setSelectedDate((prev) => addDays(prev, -1))}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                ← Előző nap
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedDate(today)}
+                className={`rounded-xl px-4 py-2 text-sm font-semibold ${
+                  isSelectedToday
+                    ? 'bg-[#12bf3d] text-white'
+                    : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                Ma
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSelectedDate((prev) => addDays(prev, 1))}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Következő nap →
+              </button>
+            </div>
+
+            <div className="mt-4 text-lg font-bold capitalize text-slate-900">
+              {selectedDayLabel}
+            </div>
+
+            <div className="mt-1 text-sm text-slate-500">
+              {selectedDayJobs.length} db munkalap ezen a napon
             </div>
           </div>
 
-          {loading ? (
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
-              Betöltés...
-            </div>
-          ) : (
-            <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-7">
-              {weekDays.map((day) => {
-                const jobs = weeklyJobsMap.get(day.key) || []
-
-                return (
-                  <div
-                    key={day.key}
-                    className={`rounded-2xl border p-4 min-h-[220px] ${
-                      day.isToday
-                        ? 'border-[#12bf3d] bg-[#12bf3d]/10'
-                        : 'border-slate-200 bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                        {day.dayLabel}
+          <div className="mt-6 space-y-4">
+            {loading ? (
+              <div className="rounded-2xl border border-slate-200 p-5 text-sm text-slate-500">
+                Betöltés...
+              </div>
+            ) : selectedDayJobs.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
+                Erre a napra még nincs mentett munkalap.
+              </div>
+            ) : (
+              selectedDayJobs.map((job) => (
+                <Link
+                  key={job.id}
+                  href={`/work-orders/${job.id}`}
+                  className="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-[1px] hover:shadow-[0_12px_28px_rgba(2,8,20,.08)]"
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="text-lg font-bold text-slate-900">
+                        {customerMap.get(job.customer_id || '') || 'Ügyfél nélkül'}
                       </div>
-                      <div className="text-lg font-extrabold text-slate-900">
-                        {day.dayNumber}
+
+                      <div className="mt-1 text-sm font-medium text-[#388cc4]">
+                        {job.job_type || 'Munkavégzés'}
                       </div>
                     </div>
 
-                    <div className="mt-4 space-y-3">
-                      {jobs.length === 0 ? (
-                        <div className="text-xs text-slate-400">Nincs munka</div>
-                      ) : (
-                        jobs.map((job) => (
-                          <div
-                            key={job.id}
-                            className="rounded-xl bg-white/90 border border-slate-200 p-3"
-                          >
-                            <div className="text-sm font-bold text-slate-900">
-                              {customerMap.get(job.customer_id || '') || job.target_pest || 'Munkalap'}
-                            </div>
-
-                            {job.job_type && (
-                              <div className="mt-1 text-xs font-medium text-[#388cc4]">
-                                {job.job_type}
-                              </div>
-                            )}
-
-                            {job.target_pest && (
-                              <div className="mt-1 text-xs text-slate-600">
-                                {job.target_pest}
-                              </div>
-                            )}
-
-                            {job.address && (
-                              <div className="mt-1 text-xs text-slate-500 line-clamp-3">
-                                {job.address}
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      )}
+                    <div className="rounded-xl bg-[#12bf3d]/10 px-3 py-2 text-sm font-bold text-[#0b7a2a]">
+                      {job.service_time || 'Időpont nélkül'}
                     </div>
                   </div>
-                )
-              })}
-            </div>
-          )}
+
+                  {job.target_pest && (
+                    <div className="mt-3 text-sm text-slate-600">
+                      Kártevő: {job.target_pest}
+                    </div>
+                  )}
+
+                  {job.address && (
+                    <div className="mt-1 text-sm text-slate-500">
+                      {job.address}
+                    </div>
+                  )}
+
+                  <div className="mt-4 text-sm font-semibold text-[#388cc4]">
+                    Munkalap megnyitása →
+                  </div>
+                </Link>
+              ))
+            )}
+          </div>
         </div>
 
         <div className="space-y-6">
           <div className="rounded-2xl bg-white p-6 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-            <h2 className="text-xl font-bold text-slate-900">Mai teendők</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              A mai napra mentett munkalapok.
-            </p>
-
-            <div className="mt-5 space-y-4">
-              {loading ? (
-                <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-500">
-                  Betöltés...
-                </div>
-              ) : todayJobs.length === 0 ? (
-                <div className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-500">
-                  Ma még nincs ütemezett munkalap.
-                </div>
-              ) : (
-                todayJobs.map((job) => (
-                  <div
-                    key={job.id}
-                    className="rounded-2xl border border-slate-200 p-4"
-                  >
-                    <div className="text-base font-semibold text-slate-900">
-                      {customerMap.get(job.customer_id || '') || 'Ügyfél nélkül'}
-                    </div>
-
-                    <div className="mt-1 text-sm text-[#388cc4] font-medium">
-                      {job.job_type || 'Munkavégzés'}
-                    </div>
-
-                    {job.target_pest && (
-                      <div className="mt-1 text-sm text-slate-600">
-                        Kártevő: {job.target_pest}
-                      </div>
-                    )}
-
-                    {job.address && (
-                      <div className="mt-1 text-sm text-slate-500">
-                        {job.address}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-white p-6 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
             <h2 className="text-xl font-bold text-slate-900">Következő munkák</h2>
             <p className="mt-1 text-sm text-slate-500">
-              A következő napokra rögzített munkalapok.
+              A közelgő kiszállások gyors áttekintése.
             </p>
 
             <div className="mt-5 space-y-4">
@@ -331,37 +298,64 @@ export default function HomePage() {
                 </div>
               ) : (
                 upcomingJobs.map((job) => (
-                  <div
+                  <Link
                     key={job.id}
-                    className="rounded-2xl border border-slate-200 p-4"
+                    href={`/work-orders/${job.id}`}
+                    className="block rounded-2xl border border-slate-200 p-4 transition hover:bg-slate-50"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-base font-semibold text-slate-900">
                         {customerMap.get(job.customer_id || '') || 'Ügyfél nélkül'}
                       </div>
+
                       <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                        {job.service_date}
+                        {job.service_time || '—'}
                       </div>
                     </div>
 
-                    <div className="mt-1 text-sm text-[#388cc4] font-medium">
+                    <div className="mt-1 text-sm font-medium text-[#388cc4]">
                       {job.job_type || 'Munkavégzés'}
                     </div>
 
-                    {job.target_pest && (
-                      <div className="mt-1 text-sm text-slate-600">
-                        Kártevő: {job.target_pest}
-                      </div>
-                    )}
+                    <div className="mt-1 text-sm text-slate-600">
+                      {job.service_date}
+                    </div>
 
                     {job.address && (
                       <div className="mt-1 text-sm text-slate-500">
                         {job.address}
                       </div>
                     )}
-                  </div>
+                  </Link>
                 ))
               )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white p-6 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
+            <h2 className="text-xl font-bold text-slate-900">Gyors műveletek</h2>
+
+            <div className="mt-5 grid gap-3">
+              <Link
+                href="/work-orders/new"
+                className="inline-flex items-center justify-center rounded-xl bg-[#12bf3d] px-4 py-3 text-sm font-semibold text-white hover:opacity-90"
+              >
+                + Új munkalap
+              </Link>
+
+              <Link
+                href="/work-orders"
+                className="inline-flex items-center justify-center rounded-xl border border-[#388cc4] px-4 py-3 text-sm font-semibold text-[#388cc4] hover:bg-[#388cc4] hover:text-white"
+              >
+                Munkalapok megnyitása
+              </Link>
+
+              <Link
+                href="/customers"
+                className="inline-flex items-center justify-center rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Ügyfelek megnyitása
+              </Link>
             </div>
           </div>
         </div>
