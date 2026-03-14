@@ -60,6 +60,7 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [form, setForm] = useState(emptyCustomer)
   const [loading, setLoading] = useState(false)
+  const [editingCustomerId, setEditingCustomerId] = useState<string | null>(null)
 
   async function loadCustomers() {
     const { data, error } = await supabase
@@ -82,6 +83,8 @@ export default function CustomersPage() {
     const normalizedAddress = form.address.trim().toLowerCase()
 
     for (const customer of customers) {
+      if (editingCustomerId && customer.id === editingCustomerId) continue
+
       const customerPhone = normalizePhone((customer.phone || '').trim())
       const customerEmail = (customer.email || '').trim().toLowerCase()
       const customerName = (customer.name || '').trim().toLowerCase()
@@ -110,7 +113,50 @@ export default function CustomersPage() {
     return null
   }
 
-  async function handleCreateCustomer(e: React.FormEvent) {
+  function handleEditCustomer(customer: Customer) {
+    setEditingCustomerId(customer.id)
+    setForm({
+      name: customer.name || '',
+      contact_person: customer.contact_person || '',
+      phone: customer.phone || '',
+      email: customer.email || '',
+      address: customer.address || '',
+      customer_type: customer.customer_type || 'lakossagi',
+      notes: customer.notes || '',
+      is_active: customer.is_active ?? true,
+    })
+
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function handleCancelEdit() {
+    setEditingCustomerId(null)
+    setForm(emptyCustomer)
+  }
+
+  async function handleArchiveCustomer(customerId: string) {
+    const confirmed = window.confirm('Biztosan archiválod ezt az ügyfelet?')
+
+    if (!confirmed) return
+
+    const { error } = await supabase
+      .from('customers')
+      .update({ is_active: false })
+      .eq('id', customerId)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
+    if (editingCustomerId === customerId) {
+      handleCancelEdit()
+    }
+
+    loadCustomers()
+  }
+
+  async function handleCreateOrUpdateCustomer(e: React.FormEvent) {
     e.preventDefault()
 
     if (!form.name.trim()) {
@@ -143,7 +189,19 @@ export default function CustomersPage() {
       is_active: true,
     }
 
-    const { error } = await supabase.from('customers').insert([payload])
+    let error = null
+
+    if (editingCustomerId) {
+      const response = await supabase
+        .from('customers')
+        .update(payload)
+        .eq('id', editingCustomerId)
+
+      error = response.error
+    } else {
+      const response = await supabase.from('customers').insert([payload])
+      error = response.error
+    }
 
     setLoading(false)
 
@@ -153,15 +211,18 @@ export default function CustomersPage() {
     }
 
     setForm(emptyCustomer)
+    setEditingCustomerId(null)
     loadCustomers()
   }
 
   return (
     <main className="max-w-6xl mx-auto px-4 py-8 grid lg:grid-cols-2 gap-6">
       <div className="bg-white rounded-2xl shadow-[0_12px_28px_rgba(2,8,20,.08)] p-5">
-        <h2 className="text-lg font-bold mb-4">Új partner / ügyfél</h2>
+        <h2 className="text-lg font-bold mb-4">
+          {editingCustomerId ? 'Ügyfél szerkesztése' : 'Új partner / ügyfél'}
+        </h2>
 
-        <form onSubmit={handleCreateCustomer} className="space-y-3">
+        <form onSubmit={handleCreateOrUpdateCustomer} className="space-y-3">
           <input
             className="w-full rounded-xl border border-slate-300 px-4 py-3"
             placeholder="Név"
@@ -219,13 +280,29 @@ export default function CustomersPage() {
             onChange={(e) => setForm({ ...form, notes: e.target.value })}
           />
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-xl px-4 py-3 font-semibold bg-[#12bf3d] text-white shadow hover:opacity-90 disabled:opacity-60"
-          >
-            {loading ? 'Mentés...' : 'Ügyfél mentése'}
-          </button>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-xl px-4 py-3 font-semibold bg-[#12bf3d] text-white shadow hover:opacity-90 disabled:opacity-60"
+            >
+              {loading
+                ? 'Mentés...'
+                : editingCustomerId
+                ? 'Ügyfél frissítése'
+                : 'Ügyfél mentése'}
+            </button>
+
+            {editingCustomerId ? (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="rounded-xl px-4 py-3 font-semibold border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                Mégse
+              </button>
+            ) : null}
+          </div>
         </form>
       </div>
 
@@ -251,6 +328,24 @@ export default function CustomersPage() {
                 >
                   {getCustomerTypeLabel(customer.customer_type)}
                 </span>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleEditCustomer(customer)}
+                  className="rounded-lg px-3 py-2 text-sm font-medium border border-[#388cc4] text-[#388cc4] hover:bg-blue-50"
+                >
+                  Szerkesztés
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleArchiveCustomer(customer.id)}
+                  className="rounded-lg px-3 py-2 text-sm font-medium border border-red-300 text-red-600 hover:bg-red-50"
+                >
+                  Archiválás
+                </button>
               </div>
             </div>
           ))}
