@@ -9,7 +9,7 @@ const supabase = createClient(
 )
 
 export async function POST(
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
@@ -22,9 +22,19 @@ export async function POST(
       )
     }
 
+    const formData = await req.formData()
+    const pdfFile = formData.get('pdf')
+
+    if (!pdfFile || !(pdfFile instanceof File)) {
+      return Response.json(
+        { error: 'Hiányzik a PDF fájl.' },
+        { status: 400 }
+      )
+    }
+
     const { data: workOrder, error: workOrderError } = await supabase
       .from('work_orders')
-      .select('id, order_number, pdf_file_path, completed_at, status')
+      .select('id, order_number')
       .eq('id', id)
       .single()
 
@@ -35,13 +45,34 @@ export async function POST(
       )
     }
 
+    const safeOrderNumber =
+      workOrder.order_number?.replace(/[^\w\-]+/g, '_') || `work-order-${id}`
+
+    const filePath = `work-orders/${id}/${safeOrderNumber}.pdf`
+    const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
     const completedAt = new Date().toISOString()
+
+    const { error: uploadError } = await supabase.storage
+      .from('work-order-pdfs')
+      .upload(filePath, pdfBuffer, {
+        contentType: 'application/pdf',
+        upsert: true,
+      })
+
+    if (uploadError) {
+      console.error('PDF upload hiba:', uploadError)
+      return Response.json(
+        { error: 'Nem sikerült feltölteni a PDF-et.' },
+        { status: 500 }
+      )
+    }
 
     const { error: updateError } = await supabase
       .from('work_orders')
       .update({
         status: 'completed',
         completed_at: completedAt,
+        pdf_file_path: filePath,
       })
       .eq('id', id)
 
@@ -57,7 +88,7 @@ export async function POST(
       success: true,
       status: 'completed',
       completed_at: completedAt,
-      pdf_file_path: workOrder.pdf_file_path || null,
+      pdf_file_path: filePath,
     })
   } catch (error) {
     console.error('Munka befejezése hiba:', error)
