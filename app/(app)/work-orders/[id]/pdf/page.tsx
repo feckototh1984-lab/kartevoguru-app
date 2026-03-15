@@ -227,26 +227,49 @@ export default function WorkOrderPdfPage() {
       windowHeight: element.scrollHeight,
       ignoreElements: (el) => el.classList?.contains('no-print'),
       onclone: (doc) => {
-        const allElements = doc.querySelectorAll('*')
+        const all = doc.querySelectorAll('*')
 
-        allElements.forEach((node) => {
+        all.forEach((node) => {
           if (!(node instanceof HTMLElement)) return
 
-          const style = window.getComputedStyle(node)
+          const inlineColor = node.style.color || ''
+          const inlineBg = node.style.backgroundColor || ''
+          const inlineBorderTop = node.style.borderTopColor || ''
+          const inlineBorderRight = node.style.borderRightColor || ''
+          const inlineBorderBottom = node.style.borderBottomColor || ''
+          const inlineBorderLeft = node.style.borderLeftColor || ''
+          const inlineOutline = node.style.outlineColor || ''
+          const inlineTextDecoration = node.style.textDecorationColor || ''
 
-          if (style.color?.includes('lab(')) {
+          if (inlineColor.includes('lab(')) {
             node.style.color = '#0f172a'
           }
-          if (style.backgroundColor?.includes('lab(')) {
+
+          if (inlineBg.includes('lab(')) {
             node.style.backgroundColor = '#ffffff'
           }
-          if (style.borderColor?.includes('lab(')) {
-            node.style.borderColor = '#cbd5e1'
+
+          if (inlineBorderTop.includes('lab(')) {
+            node.style.borderTopColor = '#cbd5e1'
           }
-          if (style.outlineColor?.includes('lab(')) {
+
+          if (inlineBorderRight.includes('lab(')) {
+            node.style.borderRightColor = '#cbd5e1'
+          }
+
+          if (inlineBorderBottom.includes('lab(')) {
+            node.style.borderBottomColor = '#cbd5e1'
+          }
+
+          if (inlineBorderLeft.includes('lab(')) {
+            node.style.borderLeftColor = '#cbd5e1'
+          }
+
+          if (inlineOutline.includes('lab(')) {
             node.style.outlineColor = '#cbd5e1'
           }
-          if (style.textDecorationColor?.includes('lab(')) {
+
+          if (inlineTextDecoration.includes('lab(')) {
             node.style.textDecorationColor = '#0f172a'
           }
         })
