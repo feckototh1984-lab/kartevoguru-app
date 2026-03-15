@@ -1,10 +1,12 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { useParams } from 'next/navigation'
+import html2canvas from 'html2canvas'
+import jsPDF from 'jspdf'
 
 type CustomerDetails = {
   name: string | null
@@ -95,6 +97,7 @@ function formatDateTime(value: string | null | undefined) {
 export default function WorkOrderPdfPage() {
   const params = useParams()
   const id = params?.id as string
+  const pdfContentRef = useRef<HTMLDivElement | null>(null)
 
   const [workOrder, setWorkOrder] = useState<WorkOrderDetails | null>(null)
   const [photos, setPhotos] = useState<WorkOrderPhoto[]>([])
@@ -200,6 +203,54 @@ export default function WorkOrderPdfPage() {
     ? workOrder.customers[0]
     : workOrder?.customers
 
+  async function generatePdfBlob() {
+    if (!pdfContentRef.current) {
+      throw new Error('Nem található a PDF tartalom.')
+    }
+
+    const element = pdfContentRef.current
+
+    const canvas = await html2canvas(element, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      windowWidth: element.scrollWidth,
+      windowHeight: element.scrollHeight,
+    })
+
+    const imgData = canvas.toDataURL('image/png')
+
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'a4',
+      compress: true,
+    })
+
+    const pdfWidth = 210
+    const pdfHeight = 297
+
+    const imgProps = pdf.getImageProperties(imgData)
+    const imgWidth = pdfWidth
+    const imgHeight = (imgProps.height * imgWidth) / imgProps.width
+
+    let heightLeft = imgHeight
+    let position = 0
+
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+    heightLeft -= pdfHeight
+
+    while (heightLeft > 0) {
+      position = heightLeft - imgHeight
+      pdf.addPage()
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pdfHeight
+    }
+
+    return pdf.output('blob')
+  }
+
   async function handleSendEmail() {
     if (!workOrder) return
 
@@ -211,14 +262,22 @@ export default function WorkOrderPdfPage() {
     try {
       setSendingEmail(true)
 
+      const pdfBlob = await generatePdfBlob()
+
+      const formData = new FormData()
+      formData.append(
+        'pdf',
+        pdfBlob,
+        `${workOrder.order_number || 'munkalap'}.pdf`
+      )
+      formData.append('workOrderId', workOrder.id)
+      formData.append('customerEmail', customer.email.trim())
+      formData.append('customerName', customer.name || '')
+      formData.append('workOrderNumber', workOrder.order_number || '')
+
       const response = await fetch('/api/send-work-order-email', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          workOrderId: workOrder.id,
-        }),
+        body: formData,
       })
 
       const result = await response.json()
@@ -231,6 +290,7 @@ export default function WorkOrderPdfPage() {
         'A munkalap sikeresen elküldve az ügyfélnek és az info@kartevoguru.hu címre.'
       )
     } catch (error) {
+      console.error(error)
       const message =
         error instanceof Error ? error.message : 'Ismeretlen hiba történt.'
       alert(message)
@@ -331,7 +391,7 @@ export default function WorkOrderPdfPage() {
           </p>
         </div>
       ) : (
-        <div data-pdf-ready="true">
+        <div ref={pdfContentRef} data-pdf-ready="true">
           <section className="print-sheet overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
             <div className="border-b border-slate-200 px-8 py-6">
               <div className="flex items-start justify-between gap-6">
