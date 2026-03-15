@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import nodemailer from 'nodemailer'
-import crypto from 'crypto'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -18,10 +17,38 @@ function getBaseUrl() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const workOrderId = body?.workOrderId as string | undefined
+    const contentType = request.headers.get('content-type') || ''
 
-    console.log('SEND EMAIL START', { workOrderId })
+    let workOrderId = ''
+    let pdfBuffer: Buffer | null = null
+    let pdfFileName = 'munkalap.pdf'
+
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData()
+
+      workOrderId = String(formData.get('workOrderId') || '')
+      const pdfFile = formData.get('pdf') as File | null
+
+      if (!workOrderId) {
+        return NextResponse.json(
+          { error: 'Hiányzó workOrderId.' },
+          { status: 400 }
+        )
+      }
+
+      if (!pdfFile) {
+        return NextResponse.json(
+          { error: 'Hiányzó PDF fájl.' },
+          { status: 400 }
+        )
+      }
+
+      pdfFileName = pdfFile.name || 'munkalap.pdf'
+      pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
+    } else {
+      const body = await request.json()
+      workOrderId = body?.workOrderId || ''
+    }
 
     if (!workOrderId) {
       return NextResponse.json(
@@ -31,7 +58,6 @@ export async function POST(request: Request) {
     }
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
-      console.error('Missing Supabase env vars')
       return NextResponse.json(
         { error: 'Hiányzó Supabase környezeti változó.' },
         { status: 500 }
@@ -43,76 +69,35 @@ export async function POST(request: Request) {
     const { data: workOrder, error: workOrderError } = await supabase
       .from('work_orders')
       .select(`
-        id,
-        order_number,
-        service_date,
-        address,
-        public_token,
-        customer:customers (
-          name,
-          email
-        )
+        *,
+        customer:customers (*)
       `)
       .eq('id', workOrderId)
       .single()
 
     if (workOrderError || !workOrder) {
-      console.error('WORK ORDER QUERY ERROR', workOrderError)
+      console.error('WORK ORDER QUERY ERROR:', workOrderError)
       return NextResponse.json(
         { error: 'A munkalap nem található.' },
         { status: 404 }
       )
     }
 
-    let publicToken = workOrder.public_token as string | null
-
-    if (!publicToken) {
-      publicToken = crypto.randomUUID()
-
-      const { error: updateError } = await supabase
-        .from('work_orders')
-        .update({ public_token: publicToken })
-        .eq('id', workOrderId)
-
-      if (updateError) {
-        console.error('PUBLIC TOKEN UPDATE ERROR', updateError)
-        return NextResponse.json(
-          { error: 'Nem sikerült publikus tokent menteni.' },
-          { status: 500 }
-        )
-      }
-    }
-
-    const baseUrl = getBaseUrl()
-    const publicLink = `${baseUrl}/share/work-order/${publicToken}`
-
     const customer = workOrder.customer as any
 
     const customerEmail =
-      customer && customer.email
-        ? String(customer.email).trim()
-        : ''
+      customer?.email ? String(customer.email).trim() : ''
 
     const customerName =
-      customer && customer.name
-        ? String(customer.name)
-        : 'Ügyfelünk'
+      customer?.name ? String(customer.name) : 'Ügyfelünk'
+
+    const orderNumber =
+      workOrder.work_order_number ||
+      workOrder.order_number ||
+      'azonosito-nelkul'
 
     const recipients = ['info@kartevoguru.hu']
     if (customerEmail) recipients.push(customerEmail)
-
-    console.log('EMAIL DATA', {
-      orderNumber: workOrder.order_number,
-      recipients,
-      hasCustomerEmail: !!customerEmail,
-      smtpHost: !!process.env.SMTP_HOST,
-      smtpPort: process.env.SMTP_PORT,
-      smtpUser: !!process.env.SMTP_USER,
-      smtpPass: !!process.env.SMTP_PASS,
-      smtpSecure: process.env.SMTP_SECURE,
-      mailFrom: process.env.MAIL_FROM,
-      publicLink,
-    })
 
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
@@ -125,13 +110,17 @@ export async function POST(request: Request) {
     })
 
     await transporter.verify()
-    console.log('SMTP VERIFY OK')
+
+    const baseUrl = getBaseUrl()
+    const publicLink = workOrder.public_token
+      ? `${baseUrl}/share/work-order/${workOrder.public_token}`
+      : null
 
     const serviceDate = workOrder.service_date
       ? new Date(workOrder.service_date).toLocaleDateString('hu-HU')
       : '—'
 
-    const subject = `KártevőGuru munkalap – ${workOrder.order_number || 'azonosító nélkül'}`
+    const subject = `KártevőGuru munkalap – ${orderNumber}`
 
     const html = `
       <div style="margin:0;padding:0;background:#f3f7fb;font-family:Arial,sans-serif;">
@@ -142,29 +131,32 @@ export async function POST(request: Request) {
           </div>
 
           <div style="background:#ffffff;padding:28px;border-radius:0 0 16px 16px;box-shadow:0 12px 28px rgba(2,8,20,.08);">
-            <p style="font-size:16px;">Kedves ${customerName}!</p>
+            <p style="font-size:16px;margin-top:0;">Kedves ${customerName}!</p>
 
-            <p style="font-size:15px;color:#475569;">
-              A KártevőGuru munkalap elkészült. Az alábbi biztonságos linken tudja megnyitni:
+            <p style="font-size:15px;color:#475569;line-height:1.7;">
+              Csatolva küldjük az elkészült munkalapot PDF formátumban.
             </p>
 
-            <div style="margin:24px 0;">
-              <a href="${publicLink}" style="display:inline-block;background:#12bf3d;color:#fff;padding:14px 22px;border-radius:12px;font-weight:bold;text-decoration:none;">
-                Munkalap megnyitása
-              </a>
-            </div>
-
             <div style="margin:24px 0;padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">
-              <p><strong>Munkalap száma:</strong> ${workOrder.order_number || '—'}</p>
+              <p><strong>Munkalap száma:</strong> ${orderNumber}</p>
               <p><strong>Dátum:</strong> ${serviceDate}</p>
               <p><strong>Cím:</strong> ${workOrder.address || '—'}</p>
             </div>
 
-            <p style="font-size:13px;color:#388cc4;word-break:break-all;">
-              ${publicLink}
-            </p>
+            ${
+              publicLink
+                ? `
+              <p style="font-size:14px;color:#475569;line-height:1.7;">
+                Tartalék megnyitási link:
+              </p>
+              <p style="font-size:13px;color:#388cc4;word-break:break-all;">
+                ${publicLink}
+              </p>
+            `
+                : ''
+            }
 
-            <p style="margin-top:24px;font-size:14px;">
+            <p style="margin-top:24px;font-size:14px;line-height:1.7;">
               Üdvözlettel:<br/>
               <strong>KártevőGuru</strong><br/>
               +36 30 602 0650
@@ -177,18 +169,27 @@ export async function POST(request: Request) {
     const text = `
 Kedves ${customerName}!
 
-A KártevőGuru munkalap elkészült.
+Csatolva küldjük az elkészült munkalapot PDF formátumban.
 
-Munkalap száma: ${workOrder.order_number || '—'}
+Munkalap száma: ${orderNumber}
 Dátum: ${serviceDate}
 Cím: ${workOrder.address || '—'}
 
-Megnyitás:
-${publicLink}
+${publicLink ? `Tartalék megnyitási link: ${publicLink}` : ''}
 
 KártevőGuru
 +36 30 602 0650
-`
+`.trim()
+
+    const attachments = []
+
+    if (pdfBuffer) {
+      attachments.push({
+        filename: pdfFileName || `munkalap-${orderNumber}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      })
+    }
 
     const info = await transporter.sendMail({
       from: process.env.MAIL_FROM || process.env.SMTP_USER,
@@ -196,24 +197,19 @@ KártevőGuru
       subject,
       text,
       html,
-    })
-
-    console.log('EMAIL SENT OK', {
-      messageId: info.messageId,
-      accepted: info.accepted,
-      rejected: info.rejected,
+      attachments,
     })
 
     return NextResponse.json({
       success: true,
-      publicLink,
       sentTo: recipients,
+      messageId: info.messageId,
+      attachedPdf: !!pdfBuffer,
     })
   } catch (error: any) {
-    console.error('SEND WORK ORDER EMAIL ERROR FULL', {
+    console.error('SEND WORK ORDER EMAIL ERROR FULL:', {
       message: error?.message,
       code: error?.code,
-      command: error?.command,
       response: error?.response,
       responseCode: error?.responseCode,
       stack: error?.stack,

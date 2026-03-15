@@ -1,871 +1,226 @@
-'use client'
+import { NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+import nodemailer from 'nodemailer'
 
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import Image from 'next/image'
-import { supabase } from '@/lib/supabase'
-import { useParams } from 'next/navigation'
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
-type CustomerDetails = {
-  name: string | null
-  contact_person: string | null
-  phone: string | null
-  email: string | null
-  address: string | null
-  customer_type: string | null
-  notes: string | null
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+
+function getBaseUrl() {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL
+  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
+  return 'http://localhost:3000'
 }
 
-type WorkOrderPhoto = {
-  id: string
-  work_order_id: string
-  file_path: string
-  file_name: string | null
-  public_url: string | null
-  created_at: string | null
-}
+export async function POST(request: Request) {
+  try {
+    const contentType = request.headers.get('content-type') || ''
 
-type WorkOrderProduct = {
-  id: string
-  work_order_id: string
-  product_name: string | null
-  quantity: string | null
-  method: string | null
-  target_pest: string | null
-  created_at: string | null
-}
+    let workOrderId = ''
+    let pdfBuffer: Buffer | null = null
+    let pdfFileName = 'munkalap.pdf'
 
-type TechnicianSignature = {
-  id: string
-  technician_name: string
-  signature_data: string
-  created_at: string
-  updated_at: string
-}
+    if (contentType.includes('multipart/form-data')) {
+      const formData = await request.formData()
 
-type WorkOrderDetails = {
-  id: string
-  order_number: string | null
-  service_date: string | null
-  job_type: string | null
-  target_pest: string | null
-  address: string | null
-  treatment_description: string | null
-  status: string | null
-  created_at: string
-  customer_signature_url: string | null
-  signed_at: string | null
-  auto_warnings: string[] | null
-  auto_tasks: string[] | null
-  pdf_file_path?: string | null
-  completed_at?: string | null
-  customers: CustomerDetails | CustomerDetails[] | null
-}
+      workOrderId = String(formData.get('workOrderId') || '')
+      const pdfFile = formData.get('pdf') as File | null
 
-function formatDate(value: string | null | undefined) {
-  if (!value) return '—'
+      if (!workOrderId) {
+        return NextResponse.json(
+          { error: 'Hiányzó workOrderId.' },
+          { status: 400 }
+        )
+      }
 
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
+      if (!pdfFile) {
+        return NextResponse.json(
+          { error: 'Hiányzó PDF fájl.' },
+          { status: 400 }
+        )
+      }
 
-  return new Intl.DateTimeFormat('hu-HU', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(date)
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '—'
-
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) {
-    return value
-  }
-
-  return new Intl.DateTimeFormat('hu-HU', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
-}
-
-function getStatusLabel(status: string | null) {
-  switch (status) {
-    case 'scheduled':
-      return 'Felvéve'
-    case 'in_progress':
-      return 'Folyamatban'
-    case 'done':
-      return 'Lezárva'
-    case 'completed':
-      return 'Lezárva'
-    case 'draft':
-      return 'Piszkozat'
-    case 'cancelled':
-      return 'Sztornózva'
-    default:
-      return status || '—'
-  }
-}
-
-export default function WorkOrderPdfPage() {
-  const params = useParams()
-  const id = params?.id as string
-
-  const [workOrder, setWorkOrder] = useState<WorkOrderDetails | null>(null)
-  const [photos, setPhotos] = useState<WorkOrderPhoto[]>([])
-  const [products, setProducts] = useState<WorkOrderProduct[]>([])
-  const [technicianSignature, setTechnicianSignature] =
-    useState<TechnicianSignature | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [errorText, setErrorText] = useState('')
-  const [sendingEmail, setSendingEmail] = useState(false)
-
-  useEffect(() => {
-    document.body.classList.add('pdf-clean-page')
-    document.documentElement.classList.add('pdf-clean-page-html')
-
-    return () => {
-      document.body.classList.remove('pdf-clean-page')
-      document.documentElement.classList.remove('pdf-clean-page-html')
+      pdfFileName = pdfFile.name || 'munkalap.pdf'
+      pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
+    } else {
+      const body = await request.json()
+      workOrderId = body?.workOrderId || ''
     }
-  }, [])
 
-  useEffect(() => {
-    async function loadWorkOrder() {
-      if (!id) return
-
-      setLoading(true)
-      setErrorText('')
-
-      const { data, error } = await supabase
-        .from('work_orders')
-        .select(`
-          id,
-          order_number,
-          service_date,
-          job_type,
-          target_pest,
-          address,
-          treatment_description,
-          status,
-          created_at,
-          customer_signature_url,
-          signed_at,
-          auto_warnings,
-          auto_tasks,
-          pdf_file_path,
-          completed_at,
-          customers (
-            name,
-            contact_person,
-            phone,
-            email,
-            address,
-            customer_type,
-            notes
-          )
-        `)
-        .eq('id', id)
-        .single()
-
-      if (error) {
-        setLoading(false)
-        setErrorText(error.message)
-        return
-      }
-
-      const { data: photoData, error: photoError } = await supabase
-        .from('work_order_photos')
-        .select('*')
-        .eq('work_order_id', id)
-        .order('created_at', { ascending: true })
-
-      if (photoError) {
-        setLoading(false)
-        setErrorText(photoError.message)
-        return
-      }
-
-      const { data: productData, error: productError } = await supabase
-        .from('work_order_products')
-        .select('*')
-        .eq('work_order_id', id)
-        .order('created_at', { ascending: true })
-
-      if (productError) {
-        setLoading(false)
-        setErrorText(productError.message)
-        return
-      }
-
-      const { data: technicianData, error: technicianError } = await supabase
-        .from('technician_signatures')
-        .select('*')
-        .order('updated_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      if (technicianError) {
-        setLoading(false)
-        setErrorText(technicianError.message)
-        return
-      }
-
-      setWorkOrder(data as unknown as WorkOrderDetails)
-      setPhotos((photoData || []) as WorkOrderPhoto[])
-      setProducts((productData || []) as WorkOrderProduct[])
-      setTechnicianSignature(
-        (technicianData as TechnicianSignature | null) || null
+    if (!workOrderId) {
+      return NextResponse.json(
+        { error: 'Hiányzó workOrderId.' },
+        { status: 400 }
       )
-      setLoading(false)
     }
 
-    loadWorkOrder()
-  }, [id])
-
-  const customer = Array.isArray(workOrder?.customers)
-    ? workOrder.customers[0]
-    : workOrder?.customers
-
-  async function handleSendEmail() {
-    if (!workOrder) return
-
-    if (!customer?.email?.trim()) {
-      alert('Az ügyfélhez nincs e-mail cím rögzítve.')
-      return
-    }
-
-    try {
-      setSendingEmail(true)
-
-      const response = await fetch('/api/send-work-order-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          workOrderId: workOrder.id,
-        }),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result?.error || 'Nem sikerült elküldeni az e-mailt.')
-      }
-
-      alert(
-        'A munkalap sikeresen elküldve az ügyfélnek és az info@kartevoguru.hu címre.'
+    if (!supabaseUrl || !supabaseServiceRoleKey) {
+      return NextResponse.json(
+        { error: 'Hiányzó Supabase környezeti változó.' },
+        { status: 500 }
       )
-    } catch (error) {
-      console.error(error)
-      const message =
-        error instanceof Error ? error.message : 'Ismeretlen hiba történt.'
-      alert(message)
-    } finally {
-      setSendingEmail(false)
     }
-  }
 
-  return (
-    <main className="mx-auto min-h-screen max-w-6xl bg-slate-100 px-4 py-6 print:max-w-none print:bg-white print:px-0 print:py-0">
-      <style jsx global>{`
-        @page {
-          size: A4;
-          margin: 10mm;
-        }
+    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
-        html.pdf-clean-page-html,
-        body.pdf-clean-page {
-          background: #f1f5f9 !important;
-        }
+    const { data: workOrder, error: workOrderError } = await supabase
+      .from('work_orders')
+      .select(`
+        *,
+        customer:customers (*)
+      `)
+      .eq('id', workOrderId)
+      .single()
 
-        body.pdf-clean-page header,
-        body.pdf-clean-page nav,
-        body.pdf-clean-page aside {
-          display: none !important;
-        }
+    if (workOrderError || !workOrder) {
+      console.error('WORK ORDER QUERY ERROR:', workOrderError)
+      return NextResponse.json(
+        { error: 'A munkalap nem található.' },
+        { status: 404 }
+      )
+    }
 
-        body.pdf-clean-page > div:first-child > header,
-        body.pdf-clean-page > div:first-child > nav,
-        body.pdf-clean-page > div:first-child > aside {
-          display: none !important;
-        }
+    const customer = workOrder.customer as any
 
-        body.pdf-clean-page main {
-          padding-top: 0 !important;
-          margin-top: 0 !important;
-        }
+    const customerEmail =
+      customer?.email ? String(customer.email).trim() : ''
 
-        @media print {
-          html,
-          body {
-            background: white !important;
-          }
+    const customerName =
+      customer?.name ? String(customer.name) : 'Ügyfelünk'
 
-          .no-print {
-            display: none !important;
-          }
+    const orderNumber =
+      workOrder.work_order_number ||
+      workOrder.order_number ||
+      'azonosito-nelkul'
 
-          .print-sheet {
-            width: 100%;
-            max-width: none !important;
-            box-shadow: none !important;
-            border: none !important;
-            border-radius: 0 !important;
-            margin: 0 !important;
-          }
+    const recipients = ['info@kartevoguru.hu']
+    if (customerEmail) recipients.push(customerEmail)
 
-          .avoid-break {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: Number(process.env.SMTP_PORT || 587),
+      secure: String(process.env.SMTP_SECURE || 'false') === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+    })
 
-          .print-grid-2 {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-          }
+    await transporter.verify()
 
-          .print-grid-photos {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-          }
+    const baseUrl = getBaseUrl()
+    const publicLink = workOrder.public_token
+      ? `${baseUrl}/share/work-order/${workOrder.public_token}`
+      : null
 
-          header,
-          nav,
-          aside {
-            display: none !important;
-          }
+    const serviceDate = workOrder.service_date
+      ? new Date(workOrder.service_date).toLocaleDateString('hu-HU')
+      : '—'
 
-          body.pdf-clean-page > div:first-child > header,
-          body.pdf-clean-page > div:first-child > nav,
-          body.pdf-clean-page > div:first-child > aside {
-            display: none !important;
-          }
-        }
-      `}</style>
+    const subject = `KártevőGuru munkalap – ${orderNumber}`
 
-      <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">
-            Nyomtatható munkalap
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Innen nyomtathatod vagy e-mailben elküldheted a munkalapot.
-          </p>
-        </div>
+    const html = `
+      <div style="margin:0;padding:0;background:#f3f7fb;font-family:Arial,sans-serif;">
+        <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
+          <div style="background:linear-gradient(135deg,#388cc4,#12bf3d);padding:24px;border-radius:16px 16px 0 0;color:#fff;">
+            <h1 style="margin:0;font-size:24px;">KártevőGuru</h1>
+            <p style="margin:8px 0 0 0;font-size:14px;">Elkészült munkalap</p>
+          </div>
 
-        <div className="flex flex-wrap gap-3">
-          <button
-            onClick={() => window.print()}
-            className="rounded-xl bg-[#12bf3d] px-5 py-3 font-semibold text-white shadow-[0_8px_20px_rgba(0,0,0,.18)] hover:opacity-90"
-          >
-            Nyomtatás / PDF mentés
-          </button>
+          <div style="background:#ffffff;padding:28px;border-radius:0 0 16px 16px;box-shadow:0 12px 28px rgba(2,8,20,.08);">
+            <p style="font-size:16px;margin-top:0;">Kedves ${customerName}!</p>
 
-          <button
-            onClick={handleSendEmail}
-            disabled={sendingEmail || loading || !workOrder}
-            className="rounded-xl bg-[#388cc4] px-5 py-3 font-semibold text-white shadow-[0_8px_20px_rgba(0,0,0,.18)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {sendingEmail ? 'Küldés folyamatban...' : 'E-mail küldése'}
-          </button>
+            <p style="font-size:15px;color:#475569;line-height:1.7;">
+              Csatolva küldjük az elkészült munkalapot PDF formátumban.
+            </p>
 
-          <Link
-            href={`/work-orders/${id}`}
-            className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-semibold hover:bg-slate-50"
-          >
-            Vissza a munkalaphoz
-          </Link>
+            <div style="margin:24px 0;padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">
+              <p><strong>Munkalap száma:</strong> ${orderNumber}</p>
+              <p><strong>Dátum:</strong> ${serviceDate}</p>
+              <p><strong>Cím:</strong> ${workOrder.address || '—'}</p>
+            </div>
+
+            ${
+              publicLink
+                ? `
+              <p style="font-size:14px;color:#475569;line-height:1.7;">
+                Tartalék megnyitási link:
+              </p>
+              <p style="font-size:13px;color:#388cc4;word-break:break-all;">
+                ${publicLink}
+              </p>
+            `
+                : ''
+            }
+
+            <p style="margin-top:24px;font-size:14px;line-height:1.7;">
+              Üdvözlettel:<br/>
+              <strong>KártevőGuru</strong><br/>
+              +36 30 602 0650
+            </p>
+          </div>
         </div>
       </div>
+    `
 
-      {loading ? (
-        <div className="rounded-2xl bg-white p-6 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-          <p className="text-sm text-slate-500">Betöltés...</p>
-        </div>
-      ) : errorText ? (
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6">
-          <p className="font-semibold text-red-700">Hiba történt</p>
-          <p className="mt-2 text-sm text-red-600">{errorText}</p>
-        </div>
-      ) : !workOrder ? (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6">
-          <p className="font-semibold text-amber-700">
-            A munkalap nem található.
-          </p>
-        </div>
-      ) : (
-        <div data-pdf-ready="true">
-          <section className="print-sheet overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-            <div className="border-b border-slate-200 bg-gradient-to-r from-[#388cc4] to-[#12bf3d] px-6 py-6 text-white md:px-8">
-              <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-                <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
-                  <div className="shrink-0 rounded-2xl bg-white/95 px-4 py-3 shadow-md">
-                    <Image
-                      src="/logo.png"
-                      alt="KártevőGuru"
-                      width={180}
-                      height={64}
-                      priority
-                      className="h-auto w-[150px] sm:w-[180px]"
-                    />
-                  </div>
+    const text = `
+Kedves ${customerName}!
 
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold tracking-wide text-white/85">
-                      KártevőGuru
-                    </div>
-                    <h2 className="mt-1 text-3xl font-extrabold leading-tight tracking-tight text-white">
-                      KÁRTEVŐIRTÁSI
-                      <br />
-                      MUNKALAP
-                    </h2>
-                    <div className="mt-3 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 backdrop-blur-sm">
-                      Egészségügyi kártevőirtás
-                    </div>
-                  </div>
-                </div>
+Csatolva küldjük az elkészült munkalapot PDF formátumban.
 
-                <div className="rounded-2xl bg-white/12 px-4 py-4 text-left backdrop-blur-sm ring-1 ring-white/20 md:min-w-[240px] md:text-right">
-                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/80">
-                    Munkalap sorszám
-                  </div>
-                  <div className="mt-1 text-2xl font-extrabold text-white">
-                    {workOrder.order_number || '—'}
-                  </div>
+Munkalap száma: ${orderNumber}
+Dátum: ${serviceDate}
+Cím: ${workOrder.address || '—'}
 
-                  <div className="mt-4 text-[11px] uppercase tracking-[0.18em] text-white/80">
-                    Szolgáltatás dátuma
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-white">
-                    {formatDate(workOrder.service_date)}
-                  </div>
+${publicLink ? `Tartalék megnyitási link: ${publicLink}` : ''}
 
-                  <div className="mt-4 text-[11px] uppercase tracking-[0.18em] text-white/80">
-                    Generálva
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-white">
-                    {formatDateTime(workOrder.created_at)}
-                  </div>
-                </div>
-              </div>
-            </div>
+KártevőGuru
++36 30 602 0650
+`.trim()
 
-            <div className="space-y-6 px-5 py-6 text-[13px] leading-relaxed text-slate-800 md:px-8">
-              <div className="grid gap-6 md:grid-cols-2 print-grid-2 avoid-break">
-                <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <div className="mb-4 border-b-2 border-slate-200 pb-2">
-                    <h3 className="text-xl font-extrabold text-slate-900">
-                      Szolgáltató adatai
-                    </h3>
-                  </div>
+    const attachments = []
 
-                  <div className="space-y-2.5">
-                    <p>
-                      <span className="font-bold">Szolgáltató:</span> KártevőGuru
-                    </p>
-                    <p>
-                      <span className="font-bold">Felelős személy:</span>{' '}
-                      {technicianSignature?.technician_name || 'Tóth Ferenc Richárd'}
-                    </p>
-                    <p>
-                      <span className="font-bold">Telefon:</span> +36 30 602 0650
-                    </p>
-                    <p>
-                      <span className="font-bold">E-mail:</span> info@kartevoguru.hu
-                    </p>
-                    <p>
-                      <span className="font-bold">Székhely / cím:</span> 8700 Marcali,
-                      Borsó-hegyi út 4779
-                    </p>
-                    <p>
-                      <span className="font-bold">Működési nyilv. szám:</span>{' '}
-                      SO-05/neo976-1/2025
-                    </p>
-                    <p>
-                      <span className="font-bold">Nyilvántartási szám:</span> 0099697
-                    </p>
-                    <p>
-                      <span className="font-bold">Adószám:</span> 91094722-1-34
-                    </p>
-                    <p>
-                      <span className="font-bold">Bankszámlaszám:</span>{' '}
-                      12042847-01896099-00100007
-                    </p>
-                  </div>
-                </section>
+    if (pdfBuffer) {
+      attachments.push({
+        filename: pdfFileName || `munkalap-${orderNumber}.pdf`,
+        content: pdfBuffer,
+        contentType: 'application/pdf',
+      })
+    }
 
-                <section className="rounded-2xl border border-slate-200 bg-white p-5">
-                  <div className="mb-4 border-b-2 border-slate-200 pb-2">
-                    <h3 className="text-xl font-extrabold text-slate-900">
-                      Szolgáltatás részletei
-                    </h3>
-                  </div>
+    const info = await transporter.sendMail({
+      from: process.env.MAIL_FROM || process.env.SMTP_USER,
+      to: recipients.join(','),
+      subject,
+      text,
+      html,
+      attachments,
+    })
 
-                  <div className="space-y-2.5">
-                    <p>
-                      <span className="font-bold">Megrendelő:</span>{' '}
-                      {customer?.name || '—'}
-                    </p>
-                    <p>
-                      <span className="font-bold">Kapcsolattartó:</span>{' '}
-                      {customer?.contact_person || '—'}
-                    </p>
-                    <p>
-                      <span className="font-bold">Telefonszám:</span>{' '}
-                      {customer?.phone || '—'}
-                    </p>
-                    <p>
-                      <span className="font-bold">E-mail:</span>{' '}
-                      {customer?.email || '—'}
-                    </p>
-                    <p>
-                      <span className="font-bold">Elvégzés időpontja:</span>{' '}
-                      {formatDate(workOrder.service_date)}
-                    </p>
-                    <p>
-                      <span className="font-bold">Munka típusa:</span>{' '}
-                      {workOrder.job_type || '—'}
-                    </p>
-                    <p>
-                      <span className="font-bold">Célzott kártevő:</span>{' '}
-                      {workOrder.target_pest || '—'}
-                    </p>
-                    <p>
-                      <span className="font-bold">Helyszín:</span>{' '}
-                      {workOrder.address || customer?.address || '—'}
-                    </p>
-                    <p>
-                      <span className="font-bold">Státusz:</span>{' '}
-                      {getStatusLabel(workOrder.status)}
-                    </p>
-                  </div>
-                </section>
-              </div>
+    return NextResponse.json({
+      success: true,
+      sentTo: recipients,
+      messageId: info.messageId,
+      attachedPdf: !!pdfBuffer,
+    })
+  } catch (error: any) {
+    console.error('SEND WORK ORDER EMAIL ERROR FULL:', {
+      message: error?.message,
+      code: error?.code,
+      response: error?.response,
+      responseCode: error?.responseCode,
+      stack: error?.stack,
+    })
 
-              <section className="avoid-break rounded-2xl border border-slate-200 bg-white p-5">
-                <div className="mb-4 border-b-2 border-slate-200 pb-2">
-                  <h3 className="text-xl font-extrabold text-slate-900">
-                    Kártevőirtó technikusok
-                  </h3>
-                </div>
-
-                <p>
-                  {technicianSignature?.technician_name || 'Tóth Ferenc Richárd'}{' '}
-                  (Működési nyilvántartási szám: SO-05/neo976-1/2025)
-                </p>
-              </section>
-
-              <section className="avoid-break rounded-2xl border border-slate-200 bg-white p-5">
-                <div className="mb-4 border-b-2 border-slate-200 pb-2">
-                  <h3 className="text-xl font-extrabold text-slate-900">
-                    Munkalap adatai
-                  </h3>
-                </div>
-
-                <div className="grid gap-x-6 gap-y-2 md:grid-cols-2">
-                  <div>
-                    <span className="font-bold">Ügyfél címe:</span>{' '}
-                    {customer?.address || '—'}
-                  </div>
-                  <div>
-                    <span className="font-bold">Ügyfél típusa:</span>{' '}
-                    {customer?.customer_type || '—'}
-                  </div>
-                  <div className="md:col-span-2">
-                    <span className="font-bold">Megjegyzés:</span>{' '}
-                    {customer?.notes || '—'}
-                  </div>
-                </div>
-              </section>
-
-              <section className="avoid-break rounded-2xl border border-slate-200 bg-white p-5">
-                <div className="mb-4 border-b-2 border-slate-200 pb-2">
-                  <h3 className="text-xl font-extrabold text-slate-900">
-                    Kezelés leírása
-                  </h3>
-                </div>
-
-                <div className="min-h-[90px] whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  {workOrder.treatment_description || '—'}
-                </div>
-              </section>
-
-              <section className="avoid-break rounded-2xl border border-slate-200 bg-white p-5">
-                <div className="mb-4 border-b-2 border-slate-200 pb-2">
-                  <h3 className="text-xl font-extrabold text-slate-900">
-                    Felhasznált készítmények
-                  </h3>
-                </div>
-
-                <div className="overflow-hidden rounded-2xl border border-slate-300">
-                  <div className="hidden grid-cols-4 border-b border-slate-300 bg-slate-100 font-bold md:grid">
-                    <div className="px-3 py-3">Termék</div>
-                    <div className="px-3 py-3">Mennyiség</div>
-                    <div className="px-3 py-3">Alkalmazási technika</div>
-                    <div className="px-3 py-3">Célzott kártevő</div>
-                  </div>
-
-                  {products.length > 0 ? (
-                    <>
-                      <div className="hidden md:block">
-                        {products.map((product) => (
-                          <div
-                            key={product.id}
-                            className="grid grid-cols-4 border-t border-slate-200 text-sm"
-                          >
-                            <div className="px-3 py-3">
-                              {product.product_name || '—'}
-                            </div>
-                            <div className="px-3 py-3">
-                              {product.quantity || '—'}
-                            </div>
-                            <div className="px-3 py-3">
-                              {product.method || '—'}
-                            </div>
-                            <div className="px-3 py-3">
-                              {product.target_pest || '—'}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      <div className="space-y-3 p-3 md:hidden">
-                        {products.map((product) => (
-                          <div
-                            key={product.id}
-                            className="rounded-xl border border-slate-200 bg-slate-50 p-3"
-                          >
-                            <p>
-                              <span className="font-bold">Termék:</span>{' '}
-                              {product.product_name || '—'}
-                            </p>
-                            <p>
-                              <span className="font-bold">Mennyiség:</span>{' '}
-                              {product.quantity || '—'}
-                            </p>
-                            <p>
-                              <span className="font-bold">Alkalmazási technika:</span>{' '}
-                              {product.method || '—'}
-                            </p>
-                            <p>
-                              <span className="font-bold">Célzott kártevő:</span>{' '}
-                              {product.target_pest || '—'}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="grid gap-2 p-3 text-sm md:grid-cols-4">
-                      <div>
-                        <span className="font-bold">Termék:</span> Nincs még külön
-                        rögzítve
-                      </div>
-                      <div>
-                        <span className="font-bold">Mennyiség:</span> —
-                      </div>
-                      <div>
-                        <span className="font-bold">Technika:</span>{' '}
-                        {workOrder.job_type || '—'}
-                      </div>
-                      <div>
-                        <span className="font-bold">Kártevő:</span>{' '}
-                        {workOrder.target_pest || '—'}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </section>
-
-              <section className="avoid-break rounded-2xl border border-slate-200 bg-white p-5">
-                <div className="mb-4 border-b-2 border-slate-200 pb-2">
-                  <h3 className="text-xl font-extrabold text-slate-900">
-                    Figyelmeztetések, óvintézkedések és javasolt teendők
-                  </h3>
-                </div>
-
-                {workOrder.auto_warnings?.length || workOrder.auto_tasks?.length ? (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4">
-                      <div className="mb-2 text-sm font-bold text-rose-700">
-                        Figyelmeztetések
-                      </div>
-
-                      {workOrder.auto_warnings?.length ? (
-                        <ul className="list-disc space-y-1 pl-5 text-[12px] text-slate-800">
-                          {workOrder.auto_warnings.map((item, index) => (
-                            <li key={`pdf-warning-${index}`}>{item}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="text-sm text-slate-500">
-                          Nincs automatikus figyelmeztetés.
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-4">
-                      <div className="mb-2 text-sm font-bold text-[#388cc4]">
-                        Teendők
-                      </div>
-
-                      {workOrder.auto_tasks?.length ? (
-                        <ul className="list-disc space-y-1 pl-5 text-[12px] text-slate-800">
-                          {workOrder.auto_tasks.map((item, index) => (
-                            <li key={`pdf-task-${index}`}>{item}</li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <div className="text-sm text-slate-500">
-                          Nincs automatikus teendő.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="min-h-[56px] whitespace-pre-wrap rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    A helyszíni tájékoztatás szerinti óvintézkedések betartása
-                    javasolt.
-                  </div>
-                )}
-              </section>
-
-              <section className="avoid-break rounded-2xl border border-slate-200 bg-white p-5">
-                <div className="mb-4 border-b-2 border-slate-200 pb-2">
-                  <h3 className="text-xl font-extrabold text-slate-900">
-                    Aláírás
-                  </h3>
-                </div>
-
-                <div className="grid gap-8 pt-2 md:grid-cols-2">
-                  <div>
-                    <div className="mb-3 text-sm text-slate-500">
-                      Szolgáltató aláírás
-                    </div>
-
-                    {technicianSignature?.signature_data ? (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                        <div className="flex h-[90px] items-center justify-center border-b border-slate-400">
-                          <img
-                            src={technicianSignature.signature_data}
-                            alt="Technikus aláírás"
-                            className="max-h-[75px] max-w-full object-contain"
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="flex h-[90px] items-end border-b border-slate-400">
-                        <div className="pb-2 text-sm font-medium text-slate-700">
-                          {technicianSignature?.technician_name || 'Tóth Ferenc Richárd'}
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="mt-2 text-sm font-medium text-slate-900">
-                      {technicianSignature?.technician_name || 'Tóth Ferenc Richárd'}
-                    </div>
-                  </div>
-
-                  <div>
-                    <div className="mb-3 text-sm text-slate-500">
-                      Ügyfél aláírás
-                    </div>
-
-                    {workOrder.customer_signature_url ? (
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-                        <div className="flex h-[90px] items-center justify-center border-b border-slate-400">
-                          <img
-                            src={workOrder.customer_signature_url}
-                            alt="Ügyfél aláírás"
-                            className="max-h-[75px] max-w-full object-contain"
-                          />
-                        </div>
-                        <div className="mt-2 text-xs text-slate-500">
-                          Aláírva: {formatDateTime(workOrder.signed_at)}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="h-[90px] border-b border-slate-400" />
-                    )}
-
-                    <div className="mt-2 text-sm font-medium text-slate-900">
-                      {customer?.name || 'Megrendelő'}
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <div className="pt-2 text-center text-xs text-slate-400">
-                Dokumentum generálva: {formatDateTime(workOrder.created_at)}
-              </div>
-            </div>
-          </section>
-
-          {photos.length > 0 && (
-            <section className="print-sheet mt-4 overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-              <div className="border-b border-slate-200 bg-gradient-to-r from-[#388cc4] to-[#12bf3d] px-6 py-5 text-white md:px-8">
-                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <div className="text-sm font-semibold text-white/85">
-                      KártevőGuru
-                    </div>
-                    <h3 className="text-2xl font-extrabold tracking-tight text-white">
-                      HELYSZÍNI FOTÓDOKUMENTÁCIÓ
-                    </h3>
-                    <div className="mt-2 text-sm text-white/85">
-                      Munkalap: {workOrder.order_number || '—'}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl bg-white/95 px-4 py-3 shadow-md">
-                    <Image
-                      src="/logo.png"
-                      alt="KártevőGuru"
-                      width={140}
-                      height={50}
-                      className="h-auto w-[120px] md:w-[140px]"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="print-grid-photos grid grid-cols-1 gap-6 px-5 py-6 md:grid-cols-2 md:px-8">
-                {photos.map((photo, index) => (
-                  <div
-                    key={photo.id}
-                    className="avoid-break overflow-hidden rounded-2xl border border-slate-200"
-                  >
-                    <div className="flex h-[240px] items-center justify-center bg-slate-100">
-                      {photo.public_url ? (
-                        <img
-                          src={photo.public_url}
-                          alt={photo.file_name || `Fotó ${index + 1}`}
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <div className="text-sm text-slate-400">
-                          Nincs előnézet
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="border-t border-slate-200 px-3 py-2 text-sm text-slate-600">
-                      Fotó {index + 1}
-                      {photo.file_name ? ` — ${photo.file_name}` : ''}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-        </div>
-      )}
-    </main>
-  )
+    return NextResponse.json(
+      {
+        error: 'Nem sikerült elküldeni az e-mailt.',
+        details: error?.message || 'Ismeretlen hiba',
+      },
+      { status: 500 }
+    )
+  }
 }
