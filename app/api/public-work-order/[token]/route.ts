@@ -18,77 +18,34 @@ export async function GET(
       return NextResponse.json({ error: 'Hiányzó token.' }, { status: 400 })
     }
 
-    if (!supabaseUrl || !supabaseServiceRoleKey) {
-      return NextResponse.json(
-        { error: 'Hiányzó Supabase környezeti változó.' },
-        { status: 500 }
-      )
-    }
-
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
     const { data, error } = await supabase
       .from('work_orders')
-      .select(`
-        id,
-        work_order_number,
-        service_date,
-        address,
-        job_type,
-        target_pest,
-        treatment_description,
-        next_service_date,
-        created_at,
-        public_token,
-        customer:customers (
-          name,
-          contact_person,
-          phone,
-          email,
-          address
-        ),
-        work_order_products (
-          id,
-          product_name,
-          quantity,
-          method,
-          target_pest
-        ),
-        work_order_photos (
-          id,
-          file_name,
-          public_url,
-          created_at
-        )
-      `)
+      .select('id, work_order_number, public_token')
       .eq('public_token', token)
       .single()
 
     if (error) {
-      console.error('PUBLIC WORK ORDER QUERY ERROR:', error)
+      console.error('TOKEN TEST ERROR:', error)
       return NextResponse.json(
-        { error: `Lekérdezési hiba: ${error.message}` },
+        { error: `TOKEN TEST: ${error.message}` },
         { status: 500 }
       )
     }
 
     if (!data) {
       return NextResponse.json(
-        { error: 'A munkalap nem található ehhez a tokenhez.' },
+        { error: 'Nincs találat ehhez a tokenhez.' },
         { status: 404 }
       )
     }
 
-    return NextResponse.json({
-      ...data,
-      order_number: data.work_order_number,
-      notes: null,
-    })
-  } catch (error) {
-    console.error('PUBLIC WORK ORDER API ERROR:', error)
-
+    return NextResponse.json(data)
+  } catch (error: any) {
+    console.error('TOKEN TEST FATAL:', error)
     return NextResponse.json(
-      { error: 'Szerverhiba történt.' },
+      { error: error?.message || 'Ismeretlen hiba' },
       { status: 500 }
     )
   }
