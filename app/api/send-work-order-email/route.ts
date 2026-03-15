@@ -1,44 +1,27 @@
 import nodemailer from 'nodemailer'
+import crypto from 'crypto'
+import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 type SendWorkOrderEmailBody = {
   workOrderId?: string | null
-  publicToken?: string | null
-  customerEmail?: string | null
-  customerName?: string | null
-  orderNumber?: string | null
-  serviceDate?: string | null
-  address?: string | null
-  jobType?: string | null
-  targetPest?: string | null
 }
 
 function formatSafe(value?: string | null) {
   return value?.trim() ? value.trim() : '—'
 }
 
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as SendWorkOrderEmailBody
-
     const workOrderId = body.workOrderId?.trim()
-    const publicToken = body.publicToken?.trim()
-    const customerEmail = body.customerEmail?.trim()
-    const customerName = body.customerName?.trim() || 'Ügyfelünk'
-    const orderNumber = formatSafe(body.orderNumber)
-    const serviceDate = formatSafe(body.serviceDate)
-    const address = formatSafe(body.address)
-    const jobType = formatSafe(body.jobType)
-    const targetPest = formatSafe(body.targetPest)
-
-    if (!customerEmail) {
-      return Response.json(
-        { error: 'Hiányzik az ügyfél e-mail címe.' },
-        { status: 400 }
-      )
-    }
 
     if (!workOrderId) {
       return Response.json(
@@ -47,12 +30,70 @@ export async function POST(req: Request) {
       )
     }
 
-    if (!publicToken) {
+    const { data: workOrder, error: workOrderError } = await supabase
+      .from('work_orders')
+      .select(`
+        id,
+        work_order_number,
+        service_date,
+        address,
+        job_type,
+        target_pest,
+        public_token,
+        customers (
+          name,
+          email
+        )
+      `)
+      .eq('id', workOrderId)
+      .single()
+
+    if (workOrderError || !workOrder) {
+      console.error('Munkalap lekérési hiba:', workOrderError)
       return Response.json(
-        { error: 'Hiányzik a publikus token (publicToken).' },
+        { error: 'A munkalap nem található.' },
+        { status: 404 }
+      )
+    }
+
+    const customer = Array.isArray(workOrder.customers)
+      ? workOrder.customers[0]
+      : workOrder.customers
+
+    const customerEmail = customer?.email?.trim()
+    const customerName = customer?.name?.trim() || 'Ügyfelünk'
+
+    if (!customerEmail) {
+      return Response.json(
+        { error: 'Hiányzik az ügyfél e-mail címe.' },
         { status: 400 }
       )
     }
+
+    let publicToken = workOrder.public_token?.trim()
+
+    if (!publicToken) {
+      publicToken = crypto.randomUUID()
+
+      const { error: updateTokenError } = await supabase
+        .from('work_orders')
+        .update({ public_token: publicToken })
+        .eq('id', workOrderId)
+
+      if (updateTokenError) {
+        console.error('Publikus token mentési hiba:', updateTokenError)
+        return Response.json(
+          { error: 'Nem sikerült létrehozni a publikus tokent.' },
+          { status: 500 }
+        )
+      }
+    }
+
+    const orderNumber = formatSafe(workOrder.work_order_number)
+    const serviceDate = formatSafe(workOrder.service_date)
+    const address = formatSafe(workOrder.address)
+    const jobType = formatSafe(workOrder.job_type)
+    const targetPest = formatSafe(workOrder.target_pest)
 
     const smtpHost = process.env.SMTP_HOST
     const smtpPort = Number(process.env.SMTP_PORT || 465)
@@ -77,9 +118,11 @@ export async function POST(req: Request) {
       },
     })
 
-    const requestUrl = new URL(req.url)
-    const origin = requestUrl.origin
-    const shareUrl = `${origin}/share/${encodeURIComponent(publicToken)}`
+    const appUrl =
+      process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+      new URL(req.url).origin
+
+    const shareUrl = `${appUrl}/share/work-order/${encodeURIComponent(publicToken)}`
 
     await transporter.sendMail({
       from: `KártevőGuru <${mailFrom}>`,
@@ -166,7 +209,11 @@ info@kartevoguru.hu
       `.trim(),
     })
 
-    return Response.json({ success: true })
+    return Response.json({
+      success: true,
+      publicToken,
+      shareUrl,
+    })
   } catch (error) {
     console.error('Email küldési hiba:', error)
 

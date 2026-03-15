@@ -218,13 +218,6 @@ export default function WorkOrderPdfPage() {
         },
         body: JSON.stringify({
           workOrderId: workOrder.id,
-          customerEmail: customer.email,
-          customerName: customer.contact_person || customer.name || 'Ügyfelünk',
-          orderNumber: workOrder.order_number,
-          serviceDate: formatDate(workOrder.service_date),
-          address: workOrder.address || customer.address,
-          jobType: workOrder.job_type,
-          targetPest: workOrder.target_pest,
         }),
       })
 
@@ -234,7 +227,9 @@ export default function WorkOrderPdfPage() {
         throw new Error(result?.error || 'Nem sikerült elküldeni az e-mailt.')
       }
 
-      alert('A munkalap sikeresen elküldve az ügyfélnek és az info@kartevoguru.hu címre.')
+      alert(
+        'A munkalap sikeresen elküldve az ügyfélnek és az info@kartevoguru.hu címre.'
+      )
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Ismeretlen hiba történt.'
