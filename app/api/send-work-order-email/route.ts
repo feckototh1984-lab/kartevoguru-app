@@ -79,7 +79,7 @@ export async function POST(req: Request) {
 
     const requestUrl = new URL(req.url)
     const origin = requestUrl.origin
-    const shareUrl = `${origin}/share/work-order/${encodeURIComponent(publicToken)}`
+    const shareUrl = `${origin}/share/${encodeURIComponent(publicToken)}`
 
     await transporter.sendMail({
       from: `KártevőGuru <${mailFrom}>`,
