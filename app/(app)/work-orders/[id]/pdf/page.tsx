@@ -5,8 +5,6 @@ import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { useParams } from 'next/navigation'
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
 
 type CustomerDetails = {
   name: string | null
@@ -94,290 +92,6 @@ function formatDateTime(value: string | null | undefined) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(date)
-}
-
-function normalizeColorValue(value: string, fallback: string) {
-  if (!value) return fallback
-
-  const lower = value.toLowerCase()
-
-  if (
-    lower.includes('lab(') ||
-    lower.includes('lch(') ||
-    lower.includes('oklab(') ||
-    lower.includes('oklch(') ||
-    lower.includes('color(')
-  ) {
-    return fallback
-  }
-
-  return value
-}
-
-function copySafeStyles(source: HTMLElement, target: HTMLElement) {
-  const cs = window.getComputedStyle(source)
-
-  const safeProps = [
-    'display',
-    'position',
-    'top',
-    'left',
-    'right',
-    'bottom',
-    'width',
-    'height',
-    'min-width',
-    'min-height',
-    'max-width',
-    'max-height',
-    'margin',
-    'margin-top',
-    'margin-right',
-    'margin-bottom',
-    'margin-left',
-    'padding',
-    'padding-top',
-    'padding-right',
-    'padding-bottom',
-    'padding-left',
-    'box-sizing',
-    'overflow',
-    'overflow-x',
-    'overflow-y',
-    'background-color',
-    'color',
-    'font',
-    'font-family',
-    'font-size',
-    'font-weight',
-    'font-style',
-    'line-height',
-    'letter-spacing',
-    'text-align',
-    'text-transform',
-    'white-space',
-    'word-break',
-    'overflow-wrap',
-    'border',
-    'border-top',
-    'border-right',
-    'border-bottom',
-    'border-left',
-    'border-style',
-    'border-top-style',
-    'border-right-style',
-    'border-bottom-style',
-    'border-left-style',
-    'border-width',
-    'border-top-width',
-    'border-right-width',
-    'border-bottom-width',
-    'border-left-width',
-    'border-radius',
-    'flex',
-    'flex-direction',
-    'justify-content',
-    'align-items',
-    'align-content',
-    'gap',
-    'grid-template-columns',
-    'grid-template-rows',
-    'grid-column',
-    'grid-row',
-    'opacity',
-    'transform',
-    'transform-origin',
-    'visibility',
-  ]
-
-  safeProps.forEach((prop) => {
-    const value = cs.getPropertyValue(prop)
-    if (value) {
-      target.style.setProperty(prop, value)
-    }
-  })
-
-  target.style.color = normalizeColorValue(cs.color, '#1e293b')
-  target.style.backgroundColor = normalizeColorValue(
-    cs.backgroundColor,
-    'transparent'
-  )
-  target.style.borderTopColor = normalizeColorValue(
-    cs.borderTopColor,
-    '#cbd5e1'
-  )
-  target.style.borderRightColor = normalizeColorValue(
-    cs.borderRightColor,
-    '#cbd5e1'
-  )
-  target.style.borderBottomColor = normalizeColorValue(
-    cs.borderBottomColor,
-    '#cbd5e1'
-  )
-  target.style.borderLeftColor = normalizeColorValue(
-    cs.borderLeftColor,
-    '#cbd5e1'
-  )
-  target.style.caretColor = normalizeColorValue(cs.caretColor, '#1e293b')
-
-  target.style.boxShadow = 'none'
-  target.style.textShadow = 'none'
-  target.style.filter = 'none'
-  target.style.backdropFilter = 'none'
-  target.style.backgroundImage = 'none'
-  target.style.outline = 'none'
-  target.style.textDecorationColor = normalizeColorValue(
-    cs.textDecorationColor,
-    '#1e293b'
-  )
-  target.style.setProperty(
-    '-webkit-text-fill-color',
-    normalizeColorValue(cs.color, '#1e293b')
-  )
-}
-
-function sanitizeCloneTree(sourceNode: HTMLElement, clonedNode: HTMLElement) {
-  clonedNode.removeAttribute('class')
-  clonedNode.removeAttribute('style')
-  clonedNode.removeAttribute('data-pdf-ready')
-
-  copySafeStyles(sourceNode, clonedNode)
-
-  if (sourceNode instanceof HTMLInputElement && clonedNode instanceof HTMLInputElement) {
-    clonedNode.value = sourceNode.value
-  }
-
-  if (
-    sourceNode instanceof HTMLTextAreaElement &&
-    clonedNode instanceof HTMLTextAreaElement
-  ) {
-    clonedNode.value = sourceNode.value
-    clonedNode.textContent = sourceNode.value
-  }
-
-  if (sourceNode instanceof HTMLSelectElement && clonedNode instanceof HTMLSelectElement) {
-    clonedNode.value = sourceNode.value
-  }
-
-  if (sourceNode instanceof HTMLImageElement && clonedNode instanceof HTMLImageElement) {
-    clonedNode.src = sourceNode.currentSrc || sourceNode.src
-    clonedNode.srcset = ''
-    clonedNode.loading = 'eager'
-    clonedNode.decoding = 'sync'
-    clonedNode.crossOrigin = 'anonymous'
-    clonedNode.referrerPolicy = 'no-referrer'
-  }
-
-  const sourceChildren = Array.from(sourceNode.children) as HTMLElement[]
-  const clonedChildren = Array.from(clonedNode.children) as HTMLElement[]
-
-  for (let i = 0; i < sourceChildren.length; i++) {
-    if (sourceChildren[i] && clonedChildren[i]) {
-      sanitizeCloneTree(sourceChildren[i], clonedChildren[i])
-    }
-  }
-}
-
-function createSanitizedExportNode(source: HTMLElement) {
-  const clone = source.cloneNode(true) as HTMLElement
-  sanitizeCloneTree(source, clone)
-
-  const wrapper = document.createElement('div')
-  wrapper.style.position = 'fixed'
-  wrapper.style.left = '-100000px'
-  wrapper.style.top = '0'
-  wrapper.style.width = `${source.scrollWidth || source.offsetWidth || 794}px`
-  wrapper.style.background = '#ffffff'
-  wrapper.style.padding = '0'
-  wrapper.style.margin = '0'
-  wrapper.style.zIndex = '-1'
-  wrapper.style.overflow = 'visible'
-
-  clone.style.width = `${source.scrollWidth || source.offsetWidth || 794}px`
-  clone.style.background = '#ffffff'
-  clone.style.margin = '0'
-  clone.style.padding = '0'
-
-  wrapper.appendChild(clone)
-  document.body.appendChild(wrapper)
-
-  return {
-    node: clone,
-    cleanup: () => {
-      if (wrapper.parentNode) {
-        wrapper.parentNode.removeChild(wrapper)
-      }
-    },
-  }
-}
-
-async function waitForImages(container: HTMLElement) {
-  const images = Array.from(container.querySelectorAll('img'))
-
-  await Promise.all(
-    images.map((img) => {
-      if (img.complete && img.naturalWidth > 0) return Promise.resolve()
-
-      return new Promise<void>((resolve) => {
-        const done = () => resolve()
-        img.addEventListener('load', done, { once: true })
-        img.addEventListener('error', done, { once: true })
-      })
-    })
-  )
-}
-
-async function generatePdfBlobFromElement(element: HTMLElement) {
-  const { node, cleanup } = createSanitizedExportNode(element)
-
-  try {
-    await waitForImages(node)
-
-    const canvas = await html2canvas(node, {
-      scale: 2,
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: '#ffffff',
-      logging: false,
-      foreignObjectRendering: false,
-      imageTimeout: 15000,
-      windowWidth: node.scrollWidth || node.offsetWidth,
-      windowHeight: node.scrollHeight || node.offsetHeight,
-    })
-
-    const imgData = canvas.toDataURL('image/jpeg', 0.95)
-
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-      compress: true,
-    })
-
-    const pdfWidth = 210
-    const pdfHeight = 297
-
-    const imgProps = pdf.getImageProperties(imgData)
-    const imgWidth = pdfWidth
-    const imgHeight = (imgProps.height * imgWidth) / imgProps.width
-
-    let heightLeft = imgHeight
-    let position = 0
-
-    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight)
-    heightLeft -= pdfHeight
-
-    while (heightLeft > 0) {
-      position = heightLeft - imgHeight
-      pdf.addPage()
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight)
-      heightLeft -= pdfHeight
-    }
-
-    return pdf.output('blob')
-  } finally {
-    cleanup()
-  }
 }
 
 export default function WorkOrderPdfPage() {
@@ -492,15 +206,7 @@ export default function WorkOrderPdfPage() {
     ? workOrder.customers[0]
     : workOrder?.customers
 
-  const isCompleted = !!workOrder?.pdf_file_path
-
-  async function generatePdfBlob() {
-    if (!pdfContentRef.current) {
-      throw new Error('Nem található a PDF tartalom.')
-    }
-
-    return generatePdfBlobFromElement(pdfContentRef.current)
-  }
+  const isCompleted = !!workOrder?.completed_at
 
   async function handleCompleteWork() {
     if (!workOrder) return
@@ -508,18 +214,8 @@ export default function WorkOrderPdfPage() {
     try {
       setCompletingWork(true)
 
-      const pdfBlob = await generatePdfBlob()
-
-      const formData = new FormData()
-      formData.append(
-        'pdf',
-        pdfBlob,
-        `${workOrder.order_number || 'munkalap'}.pdf`
-      )
-
       const response = await fetch(`/api/work-orders/${workOrder.id}/complete`, {
         method: 'POST',
-        body: formData,
       })
 
       const result = await response.json()
@@ -533,13 +229,12 @@ export default function WorkOrderPdfPage() {
           ? {
               ...prev,
               status: 'completed',
-              pdf_file_path: result.pdf_file_path || prev.pdf_file_path,
               completed_at: result.completed_at || new Date().toISOString(),
             }
           : prev
       )
 
-      alert('A munkalap véglegesítve lett, a PDF elmentve.')
+      alert('A munkalap véglegesítve lett.')
     } catch (error) {
       console.error(error)
       const message =
@@ -558,7 +253,7 @@ export default function WorkOrderPdfPage() {
       return
     }
 
-    if (!workOrder.pdf_file_path) {
+    if (!workOrder.completed_at) {
       alert('Előbb a "Munka befejezése" gombbal véglegesíteni kell a munkalapot.')
       return
     }
@@ -700,7 +395,7 @@ export default function WorkOrderPdfPage() {
           </p>
         </div>
       ) : (
-        <div ref={pdfContentRef} data-pdf-ready="true">
+        <div ref={pdfContentRef}>
           <section className="print-sheet overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
             <div className="border-b border-slate-200 px-8 py-6">
               <div className="flex items-start justify-between gap-6">
@@ -1022,8 +717,6 @@ export default function WorkOrderPdfPage() {
                           src={photo.public_url}
                           alt={photo.file_name || `Fotó ${index + 1}`}
                           className="h-full w-full object-cover"
-                          crossOrigin="anonymous"
-                          referrerPolicy="no-referrer"
                         />
                       ) : (
                         <div className="text-sm text-slate-400">
