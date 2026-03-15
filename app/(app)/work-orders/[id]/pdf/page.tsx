@@ -315,6 +315,7 @@ export default function WorkOrderPdfPage() {
 
           .print-sheet {
             width: 100%;
+            max-width: none !important;
             box-shadow: none !important;
             border: none !important;
             border-radius: 0 !important;
@@ -361,7 +362,7 @@ export default function WorkOrderPdfPage() {
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => window.print()}
-            className="rounded-xl bg-[#12bf3d] px-5 py-3 font-semibold text-white hover:opacity-90"
+            className="rounded-xl bg-[#12bf3d] px-5 py-3 font-semibold text-white shadow-[0_8px_20px_rgba(0,0,0,.18)] hover:opacity-90"
           >
             Nyomtatás / PDF mentés
           </button>
@@ -369,7 +370,7 @@ export default function WorkOrderPdfPage() {
           <button
             onClick={handleSendEmail}
             disabled={sendingEmail || loading || !workOrder}
-            className="rounded-xl bg-[#388cc4] px-5 py-3 font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-xl bg-[#388cc4] px-5 py-3 font-semibold text-white shadow-[0_8px_20px_rgba(0,0,0,.18)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {sendingEmail ? 'Küldés folyamatban...' : 'E-mail küldése'}
           </button>
@@ -399,45 +400,56 @@ export default function WorkOrderPdfPage() {
           </p>
         </div>
       ) : (
-        <div>
-          <section className="print-sheet overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-            <div className="border-b border-slate-200 px-8 py-6">
-              <div className="flex items-start justify-between gap-6">
-                <div className="flex items-center gap-4">
-                  <div className="shrink-0">
+        <div data-pdf-ready="true">
+          <section className="print-sheet overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
+            <div className="border-b border-slate-200 bg-gradient-to-r from-[#388cc4] to-[#12bf3d] px-6 py-6 text-white md:px-8">
+              <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                  <div className="shrink-0 rounded-2xl bg-white/95 px-4 py-3 shadow-md">
                     <Image
                       src="/logo.png"
                       alt="KártevőGuru"
-                      width={170}
-                      height={60}
+                      width={180}
+                      height={64}
                       priority
+                      className="h-auto w-[150px] sm:w-[180px]"
                     />
                   </div>
 
-                  <div>
-                    <div className="text-sm font-medium text-slate-500">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold tracking-wide text-white/85">
                       KártevőGuru
                     </div>
-                    <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">
-                      KÁRTEVŐIRTÁSI MUNKALAP
+                    <h2 className="mt-1 text-3xl font-extrabold leading-tight tracking-tight text-white">
+                      KÁRTEVŐIRTÁSI
+                      <br />
+                      MUNKALAP
                     </h2>
-                    <div className="mt-2 inline-flex rounded-full bg-gradient-to-r from-[#388cc4] to-[#12bf3d] px-3 py-1 text-xs font-semibold text-white">
+                    <div className="mt-3 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white ring-1 ring-white/25 backdrop-blur-sm">
                       Egészségügyi kártevőirtás
                     </div>
                   </div>
                 </div>
 
-                <div className="shrink-0 text-right">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                <div className="rounded-2xl bg-white/12 px-4 py-4 text-left backdrop-blur-sm ring-1 ring-white/20 md:min-w-[240px] md:text-right">
+                  <div className="text-[11px] uppercase tracking-[0.18em] text-white/80">
                     Munkalap sorszám
                   </div>
-                  <div className="mt-1 text-xl font-bold text-slate-900">
+                  <div className="mt-1 text-2xl font-extrabold text-white">
                     {workOrder.order_number || '—'}
                   </div>
-                  <div className="mt-3 text-xs uppercase tracking-wide text-slate-500">
+
+                  <div className="mt-4 text-[11px] uppercase tracking-[0.18em] text-white/80">
+                    Szolgáltatás dátuma
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-white">
+                    {formatDate(workOrder.service_date)}
+                  </div>
+
+                  <div className="mt-4 text-[11px] uppercase tracking-[0.18em] text-white/80">
                     Generálva
                   </div>
-                  <div className="mt-1 text-sm font-medium text-slate-700">
+                  <div className="mt-1 text-sm font-medium text-white">
                     {formatDateTime(workOrder.created_at)}
                   </div>
                 </div>
@@ -796,25 +808,30 @@ export default function WorkOrderPdfPage() {
           </section>
 
           {photos.length > 0 && (
-            <section className="print-sheet mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-              <div className="border-b border-slate-200 px-8 py-6">
-                <div className="flex items-center justify-between gap-4">
+            <section className="print-sheet mt-4 overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
+              <div className="border-b border-slate-200 bg-gradient-to-r from-[#388cc4] to-[#12bf3d] px-6 py-5 text-white md:px-8">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <div className="text-sm font-medium text-slate-500">KártevőGuru</div>
-                    <h3 className="text-2xl font-extrabold tracking-tight text-slate-900">
+                    <div className="text-sm font-semibold text-white/85">
+                      KártevőGuru
+                    </div>
+                    <h3 className="text-2xl font-extrabold tracking-tight text-white">
                       HELYSZÍNI FOTÓDOKUMENTÁCIÓ
                     </h3>
-                    <div className="mt-2 text-sm text-slate-500">
+                    <div className="mt-2 text-sm text-white/85">
                       Munkalap: {workOrder.order_number || '—'}
                     </div>
                   </div>
 
-                  <Image
-                    src="/logo.png"
-                    alt="KártevőGuru"
-                    width={140}
-                    height={50}
-                  />
+                  <div className="rounded-2xl bg-white/95 px-4 py-3 shadow-md">
+                    <Image
+                      src="/logo.png"
+                      alt="KártevőGuru"
+                      width={140}
+                      height={50}
+                      className="h-auto w-[120px] md:w-[140px]"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -832,7 +849,9 @@ export default function WorkOrderPdfPage() {
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <div className="text-sm text-slate-400">Nincs előnézet</div>
+                        <div className="text-sm text-slate-400">
+                          Nincs előnézet
+                        </div>
                       )}
                     </div>
 
