@@ -1,12 +1,11 @@
 import nodemailer from 'nodemailer'
-import { randomBytes } from 'crypto'
-import { supabaseAdmin } from '@/lib/supabase-admin'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 type SendWorkOrderEmailBody = {
   workOrderId?: string | null
+  publicToken?: string | null
   customerEmail?: string | null
   customerName?: string | null
   orderNumber?: string | null
@@ -25,6 +24,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as SendWorkOrderEmailBody
 
     const workOrderId = body.workOrderId?.trim()
+    const publicToken = body.publicToken?.trim()
     const customerEmail = body.customerEmail?.trim()
     const customerName = body.customerName?.trim() || 'Ügyfelünk'
     const orderNumber = formatSafe(body.orderNumber)
@@ -47,6 +47,13 @@ export async function POST(req: Request) {
       )
     }
 
+    if (!publicToken) {
+      return Response.json(
+        { error: 'Hiányzik a publikus token (publicToken).' },
+        { status: 400 }
+      )
+    }
+
     const smtpHost = process.env.SMTP_HOST
     const smtpPort = Number(process.env.SMTP_PORT || 465)
     const smtpUser = process.env.SMTP_USER
@@ -60,46 +67,6 @@ export async function POST(req: Request) {
       )
     }
 
-    const { data: workOrder, error: workOrderError } = await supabaseAdmin
-      .from('work_orders')
-      .select('id, public_token')
-      .eq('id', workOrderId)
-      .single()
-
-    if (workOrderError || !workOrder) {
-      console.error('Munkalap lekérési hiba:', workOrderError)
-
-      return Response.json(
-        { error: 'A munkalap nem található.' },
-        { status: 404 }
-      )
-    }
-
-    let publicToken = workOrder.public_token as string | null
-
-    if (!publicToken) {
-      publicToken = randomBytes(24).toString('hex')
-
-      const { error: tokenUpdateError } = await supabaseAdmin
-        .from('work_orders')
-        .update({ public_token: publicToken })
-        .eq('id', workOrderId)
-
-      if (tokenUpdateError) {
-        console.error('Public token mentési hiba:', tokenUpdateError)
-
-        return Response.json(
-          { error: 'Nem sikerült a publikus megosztó link létrehozása.' },
-          { status: 500 }
-        )
-      }
-    }
-
-    const appUrl =
-      process.env.NEXT_PUBLIC_APP_URL?.trim() || new URL(req.url).origin
-
-    const sharePageUrl = `${appUrl}/share/work-order/${publicToken}`
-
     const transporter = nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
@@ -109,6 +76,10 @@ export async function POST(req: Request) {
         pass: smtpPass,
       },
     })
+
+    const requestUrl = new URL(req.url)
+    const origin = requestUrl.origin
+    const shareUrl = `${origin}/share/${encodeURIComponent(publicToken)}`
 
     await transporter.sendMail({
       from: `KártevőGuru <${mailFrom}>`,
@@ -131,7 +102,7 @@ export async function POST(req: Request) {
       </p>
 
       <p style="margin:0 0 16px;">
-        A munkalapot az alábbi biztonságos gombra kattintva tudja megnyitni.
+        A munkalapot az alábbi gombra kattintva tudja megnyitni, letölteni vagy PDF formátumban elmenteni.
       </p>
 
       <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin:0 0 20px;">
@@ -144,8 +115,10 @@ export async function POST(req: Request) {
 
       <div style="margin:24px 0;">
         <a
-          href="${sharePageUrl}"
+          href="${shareUrl}"
           style="display:inline-block;background:#12bf3d;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:700;"
+          target="_blank"
+          rel="noopener noreferrer"
         >
           Munkalap megnyitása
         </a>
@@ -156,7 +129,7 @@ export async function POST(req: Request) {
       </p>
 
       <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:#388cc4;">
-        ${sharePageUrl}
+        ${shareUrl}
       </p>
 
       <p style="margin:0 0 16px;">
@@ -184,7 +157,7 @@ Célzott kártevő: ${targetPest}
 Helyszín: ${address}
 
 A munkalap megnyitása:
-${sharePageUrl}
+${shareUrl}
 
 Üdvözlettel:
 KártevőGuru
@@ -193,10 +166,7 @@ info@kartevoguru.hu
       `.trim(),
     })
 
-    return Response.json({
-      success: true,
-      shareUrl: sharePageUrl,
-    })
+    return Response.json({ success: true })
   } catch (error) {
     console.error('Email küldési hiba:', error)
 
