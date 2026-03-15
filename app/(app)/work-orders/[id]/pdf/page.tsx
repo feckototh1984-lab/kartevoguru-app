@@ -1,12 +1,10 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 import { useParams } from 'next/navigation'
-import html2canvas from 'html2canvas'
-import jsPDF from 'jspdf'
 
 type CustomerDetails = {
   name: string | null
@@ -99,7 +97,6 @@ function formatDateTime(value: string | null | undefined) {
 export default function WorkOrderPdfPage() {
   const params = useParams()
   const id = params?.id as string
-  const pdfContentRef = useRef<HTMLDivElement | null>(null)
 
   const [workOrder, setWorkOrder] = useState<WorkOrderDetails | null>(null)
   const [photos, setPhotos] = useState<WorkOrderPhoto[]>([])
@@ -110,6 +107,16 @@ export default function WorkOrderPdfPage() {
   const [errorText, setErrorText] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
   const [completingWork, setCompletingWork] = useState(false)
+
+  useEffect(() => {
+    document.body.classList.add('pdf-clean-page')
+    document.documentElement.classList.add('pdf-clean-page-html')
+
+    return () => {
+      document.body.classList.remove('pdf-clean-page')
+      document.documentElement.classList.remove('pdf-clean-page-html')
+    }
+  }, [])
 
   useEffect(() => {
     async function loadWorkOrder() {
@@ -300,6 +307,31 @@ export default function WorkOrderPdfPage() {
           margin: 10mm;
         }
 
+        html.pdf-clean-page-html,
+        body.pdf-clean-page {
+          background: #f1f5f9 !important;
+        }
+
+        /* PDF oldalról rejtjük a globális app shell fejléc/nav elemeit */
+        body.pdf-clean-page header,
+        body.pdf-clean-page nav,
+        body.pdf-clean-page aside {
+          display: none !important;
+        }
+
+        /* Sok app shell egy első wrapperben rakja a topbart, ezt is levesszük */
+        body.pdf-clean-page > div:first-child > header,
+        body.pdf-clean-page > div:first-child > nav,
+        body.pdf-clean-page > div:first-child > aside {
+          display: none !important;
+        }
+
+        /* Ha a layout a main köré extra top spacinget rakott */
+        body.pdf-clean-page main {
+          padding-top: 0 !important;
+          margin-top: 0 !important;
+        }
+
         @media print {
           html,
           body {
@@ -329,12 +361,24 @@ export default function WorkOrderPdfPage() {
           .print-grid-photos {
             grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
           }
+
+          /* Nyomtatáskor biztosan ne jöjjön vissza semmilyen layout elem */
+          header,
+          nav,
+          aside {
+            display: none !important;
+          }
+
+          body.pdf-clean-page > div:first-child > header,
+          body.pdf-clean-page > div:first-child > nav,
+          body.pdf-clean-page > div:first-child > aside {
+            display: none !important;
+          }
         }
       `}</style>
 
       <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <div className="text-sm text-slate-500">KártevőGuru App</div>
           <h1 className="text-2xl font-extrabold text-slate-900">
             Nyomtatható munkalap
           </h1>
@@ -397,7 +441,7 @@ export default function WorkOrderPdfPage() {
           </p>
         </div>
       ) : (
-        <div ref={pdfContentRef}>
+        <div>
           <section className="print-sheet overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
             <div className="border-b border-slate-200 px-8 py-6">
               <div className="flex items-start justify-between gap-6">
@@ -452,15 +496,37 @@ export default function WorkOrderPdfPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <p><span className="font-semibold">Szolgáltató:</span> KártevőGuru</p>
-                    <p><span className="font-semibold">Felelős személy:</span> {technicianSignature?.technician_name || 'Tóth Ferenc'}</p>
-                    <p><span className="font-semibold">Telefon:</span> +36 30 602 0650</p>
-                    <p><span className="font-semibold">E-mail:</span> info@kartevoguru.hu</p>
-                    <p><span className="font-semibold">Székhely / cím:</span> 8700 Marcali, Borsó-hegyi út 4779</p>
-                    <p><span className="font-semibold">Működési nyilv. szám:</span> SO-05/neo976-1/2025</p>
-                    <p><span className="font-semibold">Nyilvántartási szám:</span> 0099697</p>
-                    <p><span className="font-semibold">Adószám:</span> 91094722-1-34</p>
-                    <p><span className="font-semibold">Bankszámlaszám:</span> 12042847-01896099-00100007</p>
+                    <p>
+                      <span className="font-semibold">Szolgáltató:</span> KártevőGuru
+                    </p>
+                    <p>
+                      <span className="font-semibold">Felelős személy:</span>{' '}
+                      {technicianSignature?.technician_name || 'Tóth Ferenc'}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Telefon:</span> +36 30 602 0650
+                    </p>
+                    <p>
+                      <span className="font-semibold">E-mail:</span> info@kartevoguru.hu
+                    </p>
+                    <p>
+                      <span className="font-semibold">Székhely / cím:</span> 8700 Marcali,
+                      Borsó-hegyi út 4779
+                    </p>
+                    <p>
+                      <span className="font-semibold">Működési nyilv. szám:</span>{' '}
+                      SO-05/neo976-1/2025
+                    </p>
+                    <p>
+                      <span className="font-semibold">Nyilvántartási szám:</span> 0099697
+                    </p>
+                    <p>
+                      <span className="font-semibold">Adószám:</span> 91094722-1-34
+                    </p>
+                    <p>
+                      <span className="font-semibold">Bankszámlaszám:</span>{' '}
+                      12042847-01896099-00100007
+                    </p>
                   </div>
                 </section>
 
@@ -472,15 +538,40 @@ export default function WorkOrderPdfPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <p><span className="font-semibold">Megrendelő:</span> {customer?.name || '—'}</p>
-                    <p><span className="font-semibold">Kapcsolattartó:</span> {customer?.contact_person || '—'}</p>
-                    <p><span className="font-semibold">Telefonszám:</span> {customer?.phone || '—'}</p>
-                    <p><span className="font-semibold">E-mail:</span> {customer?.email || '—'}</p>
-                    <p><span className="font-semibold">Elvégzés időpontja:</span> {formatDate(workOrder.service_date)}</p>
-                    <p><span className="font-semibold">Munka típusa:</span> {workOrder.job_type || '—'}</p>
-                    <p><span className="font-semibold">Célzott kártevő:</span> {workOrder.target_pest || '—'}</p>
-                    <p><span className="font-semibold">Helyszín:</span> {workOrder.address || customer?.address || '—'}</p>
-                    <p><span className="font-semibold">Státusz:</span> {workOrder.status || '—'}</p>
+                    <p>
+                      <span className="font-semibold">Megrendelő:</span>{' '}
+                      {customer?.name || '—'}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Kapcsolattartó:</span>{' '}
+                      {customer?.contact_person || '—'}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Telefonszám:</span>{' '}
+                      {customer?.phone || '—'}
+                    </p>
+                    <p>
+                      <span className="font-semibold">E-mail:</span> {customer?.email || '—'}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Elvégzés időpontja:</span>{' '}
+                      {formatDate(workOrder.service_date)}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Munka típusa:</span>{' '}
+                      {workOrder.job_type || '—'}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Célzott kártevő:</span>{' '}
+                      {workOrder.target_pest || '—'}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Helyszín:</span>{' '}
+                      {workOrder.address || customer?.address || '—'}
+                    </p>
+                    <p>
+                      <span className="font-semibold">Státusz:</span> {workOrder.status || '—'}
+                    </p>
                   </div>
                 </section>
               </div>
@@ -493,29 +584,35 @@ export default function WorkOrderPdfPage() {
                 </div>
 
                 <p>
-                  {technicianSignature?.technician_name || 'Tóth Ferenc'} (Működési nyilvántartási szám: SO-05/neo976-1/2025)
+                  {technicianSignature?.technician_name || 'Tóth Ferenc'} (Működési
+                  nyilvántartási szám: SO-05/neo976-1/2025)
                 </p>
               </section>
 
               <section className="avoid-break">
                 <div className="mb-2 border-b-2 border-slate-300 pb-1">
-                  <h3 className="text-lg font-bold text-slate-900">
-                    Munkalap adatai
-                  </h3>
+                  <h3 className="text-lg font-bold text-slate-900">Munkalap adatai</h3>
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                  <div><span className="font-semibold">Ügyfél címe:</span> {customer?.address || '—'}</div>
-                  <div><span className="font-semibold">Ügyfél típusa:</span> {customer?.customer_type || '—'}</div>
-                  <div className="col-span-2"><span className="font-semibold">Megjegyzés:</span> {customer?.notes || '—'}</div>
+                  <div>
+                    <span className="font-semibold">Ügyfél címe:</span>{' '}
+                    {customer?.address || '—'}
+                  </div>
+                  <div>
+                    <span className="font-semibold">Ügyfél típusa:</span>{' '}
+                    {customer?.customer_type || '—'}
+                  </div>
+                  <div className="col-span-2">
+                    <span className="font-semibold">Megjegyzés:</span>{' '}
+                    {customer?.notes || '—'}
+                  </div>
                 </div>
               </section>
 
               <section className="avoid-break">
                 <div className="mb-2 border-b-2 border-slate-300 pb-1">
-                  <h3 className="text-lg font-bold text-slate-900">
-                    Kezelés leírása
-                  </h3>
+                  <h3 className="text-lg font-bold text-slate-900">Kezelés leírása</h3>
                 </div>
 
                 <div className="min-h-[70px] whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
@@ -589,9 +686,7 @@ export default function WorkOrderPdfPage() {
                     </div>
 
                     <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-                      <div className="mb-2 text-sm font-bold text-[#388cc4]">
-                        Teendők
-                      </div>
+                      <div className="mb-2 text-sm font-bold text-[#388cc4]">Teendők</div>
 
                       {workOrder.auto_tasks?.length ? (
                         <ul className="list-disc space-y-1 pl-5 text-[12px] text-slate-800">
@@ -620,9 +715,7 @@ export default function WorkOrderPdfPage() {
 
                 <div className="grid grid-cols-2 gap-10 pt-4">
                   <div>
-                    <div className="mb-4 text-sm text-slate-500">
-                      Szolgáltató aláírás
-                    </div>
+                    <div className="mb-4 text-sm text-slate-500">Szolgáltató aláírás</div>
 
                     {technicianSignature?.signature_data ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -648,9 +741,7 @@ export default function WorkOrderPdfPage() {
                   </div>
 
                   <div>
-                    <div className="mb-4 text-sm text-slate-500">
-                      Ügyfél aláírás
-                    </div>
+                    <div className="mb-4 text-sm text-slate-500">Ügyfél aláírás</div>
 
                     {workOrder.customer_signature_url ? (
                       <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
@@ -687,9 +778,7 @@ export default function WorkOrderPdfPage() {
               <div className="border-b border-slate-200 px-8 py-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <div className="text-sm font-medium text-slate-500">
-                      KártevőGuru
-                    </div>
+                    <div className="text-sm font-medium text-slate-500">KártevőGuru</div>
                     <h3 className="text-2xl font-extrabold tracking-tight text-slate-900">
                       HELYSZÍNI FOTÓDOKUMENTÁCIÓ
                     </h3>
@@ -721,9 +810,7 @@ export default function WorkOrderPdfPage() {
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <div className="text-sm text-slate-400">
-                          Nincs előnézet
-                        </div>
+                        <div className="text-sm text-slate-400">Nincs előnézet</div>
                       )}
                     </div>
 
