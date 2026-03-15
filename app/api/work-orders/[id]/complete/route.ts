@@ -9,14 +9,11 @@ const supabase = createClient(
 )
 
 export async function POST(
-  req: Request,
+  _req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await context.params
-    const formData = await req.formData()
-
-    const pdfFile = formData.get('pdf')
 
     if (!id) {
       return Response.json(
@@ -25,16 +22,9 @@ export async function POST(
       )
     }
 
-    if (!pdfFile || !(pdfFile instanceof File)) {
-      return Response.json(
-        { error: 'Hiányzik a PDF fájl.' },
-        { status: 400 }
-      )
-    }
-
     const { data: workOrder, error: workOrderError } = await supabase
       .from('work_orders')
-      .select('id, order_number')
+      .select('id, order_number, pdf_file_path, completed_at, status')
       .eq('id', id)
       .single()
 
@@ -45,33 +35,13 @@ export async function POST(
       )
     }
 
-    const fileExt = 'pdf'
-    const safeOrderNumber = workOrder.order_number || `work-order-${id}`
-    const filePath = `work-orders/${id}/${safeOrderNumber}.pdf`
-
-    const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
-
-    const { error: uploadError } = await supabase.storage
-      .from('work-order-pdfs')
-      .upload(filePath, pdfBuffer, {
-        contentType: 'application/pdf',
-        upsert: true,
-      })
-
-    if (uploadError) {
-      console.error('PDF upload hiba:', uploadError)
-      return Response.json(
-        { error: 'Nem sikerült feltölteni a PDF-et.' },
-        { status: 500 }
-      )
-    }
+    const completedAt = new Date().toISOString()
 
     const { error: updateError } = await supabase
       .from('work_orders')
       .update({
         status: 'completed',
-        pdf_file_path: filePath,
-        completed_at: new Date().toISOString(),
+        completed_at: completedAt,
       })
       .eq('id', id)
 
@@ -85,7 +55,9 @@ export async function POST(
 
     return Response.json({
       success: true,
-      pdf_file_path: filePath,
+      status: 'completed',
+      completed_at: completedAt,
+      pdf_file_path: workOrder.pdf_file_path || null,
     })
   } catch (error) {
     console.error('Munka befejezése hiba:', error)
