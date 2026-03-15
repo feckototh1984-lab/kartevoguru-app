@@ -21,6 +21,8 @@ export async function POST(request: Request) {
     const body = await request.json()
     const workOrderId = body?.workOrderId as string | undefined
 
+    console.log('SEND EMAIL START', { workOrderId })
+
     if (!workOrderId) {
       return NextResponse.json(
         { error: 'Hiányzó workOrderId.' },
@@ -29,6 +31,7 @@ export async function POST(request: Request) {
     }
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
+      console.error('Missing Supabase env vars')
       return NextResponse.json(
         { error: 'Hiányzó Supabase környezeti változó.' },
         { status: 500 }
@@ -54,6 +57,7 @@ export async function POST(request: Request) {
       .single()
 
     if (workOrderError || !workOrder) {
+      console.error('WORK ORDER QUERY ERROR', workOrderError)
       return NextResponse.json(
         { error: 'A munkalap nem található.' },
         { status: 404 }
@@ -71,7 +75,7 @@ export async function POST(request: Request) {
         .eq('id', workOrderId)
 
       if (updateError) {
-        console.error('PUBLIC TOKEN UPDATE ERROR:', updateError)
+        console.error('PUBLIC TOKEN UPDATE ERROR', updateError)
         return NextResponse.json(
           { error: 'Nem sikerült publikus tokent menteni.' },
           { status: 500 }
@@ -82,7 +86,6 @@ export async function POST(request: Request) {
     const baseUrl = getBaseUrl()
     const publicLink = `${baseUrl}/share/work-order/${publicToken}`
 
-    // --- TypeScript fix ---
     const customer = workOrder.customer as any
 
     const customerEmail =
@@ -98,6 +101,19 @@ export async function POST(request: Request) {
     const recipients = ['info@kartevoguru.hu']
     if (customerEmail) recipients.push(customerEmail)
 
+    console.log('EMAIL DATA', {
+      orderNumber: workOrder.order_number,
+      recipients,
+      hasCustomerEmail: !!customerEmail,
+      smtpHost: !!process.env.SMTP_HOST,
+      smtpPort: process.env.SMTP_PORT,
+      smtpUser: !!process.env.SMTP_USER,
+      smtpPass: !!process.env.SMTP_PASS,
+      smtpSecure: process.env.SMTP_SECURE,
+      mailFrom: process.env.MAIL_FROM,
+      publicLink,
+    })
+
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT || 587),
@@ -108,6 +124,9 @@ export async function POST(request: Request) {
       },
     })
 
+    await transporter.verify()
+    console.log('SMTP VERIFY OK')
+
     const serviceDate = workOrder.service_date
       ? new Date(workOrder.service_date).toLocaleDateString('hu-HU')
       : '—'
@@ -117,17 +136,13 @@ export async function POST(request: Request) {
     const html = `
       <div style="margin:0;padding:0;background:#f3f7fb;font-family:Arial,sans-serif;">
         <div style="max-width:640px;margin:0 auto;padding:24px 16px;">
-          
           <div style="background:linear-gradient(135deg,#388cc4,#12bf3d);padding:24px;border-radius:16px 16px 0 0;color:#fff;">
             <h1 style="margin:0;font-size:24px;">KártevőGuru</h1>
             <p style="margin:8px 0 0 0;font-size:14px;">Elkészült munkalap</p>
           </div>
 
           <div style="background:#ffffff;padding:28px;border-radius:0 0 16px 16px;box-shadow:0 12px 28px rgba(2,8,20,.08);">
-
-            <p style="font-size:16px;">
-              Kedves ${customerName}!
-            </p>
+            <p style="font-size:16px;">Kedves ${customerName}!</p>
 
             <p style="font-size:15px;color:#475569;">
               A KártevőGuru munkalap elkészült. Az alábbi biztonságos linken tudja megnyitni:
@@ -154,7 +169,6 @@ export async function POST(request: Request) {
               <strong>KártevőGuru</strong><br/>
               +36 30 602 0650
             </p>
-
           </div>
         </div>
       </div>
@@ -176,7 +190,7 @@ KártevőGuru
 +36 30 602 0650
 `
 
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: process.env.MAIL_FROM || process.env.SMTP_USER,
       to: recipients.join(','),
       subject,
@@ -184,17 +198,32 @@ KártevőGuru
       html,
     })
 
+    console.log('EMAIL SENT OK', {
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+    })
+
     return NextResponse.json({
       success: true,
       publicLink,
       sentTo: recipients,
     })
-
-  } catch (error) {
-    console.error('SEND WORK ORDER EMAIL ERROR:', error)
+  } catch (error: any) {
+    console.error('SEND WORK ORDER EMAIL ERROR FULL', {
+      message: error?.message,
+      code: error?.code,
+      command: error?.command,
+      response: error?.response,
+      responseCode: error?.responseCode,
+      stack: error?.stack,
+    })
 
     return NextResponse.json(
-      { error: 'Nem sikerült elküldeni az e-mailt.' },
+      {
+        error: 'Nem sikerült elküldeni az e-mailt.',
+        details: error?.message || 'Ismeretlen hiba',
+      },
       { status: 500 }
     )
   }
