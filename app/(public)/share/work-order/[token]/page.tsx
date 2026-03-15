@@ -1,547 +1,291 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { useParams } from 'next/navigation'
 import Image from 'next/image'
-import { notFound } from 'next/navigation'
 
-export const dynamic = 'force-dynamic'
-
-type PublicCustomer = {
-  name: string | null
-  contact_person: string | null
-  phone: string | null
-  email: string | null
-  address: string | null
-  customer_type: string | null
-  notes: string | null
+type Customer = {
+  name?: string | null
+  contact_person?: string | null
+  phone?: string | null
+  email?: string | null
+  address?: string | null
 }
 
-type PublicPhoto = {
+type WorkOrderProduct = {
   id: string
-  public_url: string | null
-  file_name: string | null
+  product_name?: string | null
+  quantity?: string | null
+  method?: string | null
+  target_pest?: string | null
 }
 
-type PublicProduct = {
+type WorkOrderPhoto = {
   id: string
-  product_name: string | null
-  quantity: string | null
-  method: string | null
-  target_pest: string | null
+  file_name?: string | null
+  public_url?: string | null
+  created_at?: string | null
 }
 
-type PublicTechnicianSignature = {
-  technician_name: string | null
-  signature_data: string | null
-}
-
-type PublicWorkOrder = {
+type WorkOrderData = {
   id: string
-  order_number: string | null
-  service_date: string | null
-  job_type: string | null
-  target_pest: string | null
-  address: string | null
-  treatment_description: string | null
-  status: string | null
-  created_at: string | null
-  customer_signature_url: string | null
-  signed_at: string | null
-  auto_warnings: string[] | null
-  auto_tasks: string[] | null
-  customers: PublicCustomer | PublicCustomer[] | null
-  photos?: PublicPhoto[]
-  products?: PublicProduct[]
-  technicianSignature?: PublicTechnicianSignature | null
+  order_number?: string | null
+  service_date?: string | null
+  address?: string | null
+  job_type?: string | null
+  target_pest?: string | null
+  treatment_description?: string | null
+  notes?: string | null
+  next_service_date?: string | null
+  created_at?: string | null
+  customer?: Customer | null
+  work_order_products?: WorkOrderProduct[]
+  work_order_photos?: WorkOrderPhoto[]
 }
 
-type ApiResponse = {
-  workOrder?: PublicWorkOrder
-  error?: string
-}
-
-function formatDate(value: string | null | undefined) {
+function formatDate(value?: string | null) {
   if (!value) return '—'
-
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-
-  return new Intl.DateTimeFormat('hu-HU', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(date)
+  return date.toLocaleDateString('hu-HU')
 }
 
-function formatDateTime(value: string | null | undefined) {
+function formatDateTime(value?: string | null) {
   if (!value) return '—'
-
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-
-  return new Intl.DateTimeFormat('hu-HU', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
+  return date.toLocaleString('hu-HU')
 }
 
-export default async function PublicWorkOrderPage({
-  params,
-}: {
-  params: Promise<{ token: string }>
-}) {
-  const { token } = await params
+export default function PublicWorkOrderPage() {
+  const params = useParams()
+  const token = params?.token as string
 
-  const appUrl =
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    'https://kartevoguru-app.vercel.app'
+  const [data, setData] = useState<WorkOrderData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const response = await fetch(
-    `${appUrl}/api/public-work-order/${encodeURIComponent(token)}`,
-    {
-      cache: 'no-store',
+  useEffect(() => {
+    async function loadWorkOrder() {
+      try {
+        setLoading(true)
+        setError('')
+
+        const response = await fetch(`/api/public-work-order/${token}`, {
+          cache: 'no-store',
+        })
+
+        const result = await response.json()
+
+        if (!response.ok) {
+          throw new Error(result?.error || 'Nem sikerült betölteni a munkalapot.')
+        }
+
+        setData(result)
+      } catch (err: any) {
+        setError(err?.message || 'Hiba történt.')
+      } finally {
+        setLoading(false)
+      }
     }
-  )
 
-  let result: ApiResponse | null = null
+    if (token) {
+      loadWorkOrder()
+    }
+  }, [token])
 
-  try {
-    result = (await response.json()) as ApiResponse
-  } catch {
-    result = null
+  if (loading) {
+    return (
+      <main style={{ padding: 24, fontFamily: 'Arial, sans-serif' }}>
+        <p>Munkalap betöltése...</p>
+      </main>
+    )
   }
 
-  if (!response.ok || !result?.workOrder) {
-    notFound()
+  if (error || !data) {
+    return (
+      <main style={{ padding: 24, fontFamily: 'Arial, sans-serif' }}>
+        <h1 style={{ marginBottom: 12 }}>Munkalap</h1>
+        <p>{error || 'A munkalap nem található.'}</p>
+      </main>
+    )
   }
-
-  const workOrder = result.workOrder
-  const customer = Array.isArray(workOrder.customers)
-    ? workOrder.customers[0]
-    : workOrder.customers
-
-  const photos = workOrder.photos || []
-  const products = workOrder.products || []
-  const technicianSignature = workOrder.technicianSignature || null
 
   return (
-    <main className="mx-auto min-h-screen max-w-5xl bg-slate-100 px-4 py-6 print:max-w-none print:bg-white print:px-0 print:py-0">
-      <style>{`
-        @page {
-          size: A4;
-          margin: 10mm;
-        }
+    <main
+      style={{
+        minHeight: '100vh',
+        background: '#f3f7fb',
+        padding: '24px 12px',
+        fontFamily: 'Arial, sans-serif',
+      }}
+    >
+      <div
+        style={{
+          maxWidth: 900,
+          margin: '0 auto',
+          background: '#ffffff',
+          borderRadius: 18,
+          overflow: 'hidden',
+          boxShadow: '0 12px 28px rgba(2,8,20,.08)',
+        }}
+      >
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #388cc4, #12bf3d)',
+            color: '#fff',
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              display: 'inline-block',
+              padding: '6px 12px',
+              borderRadius: 999,
+              background: 'rgba(255,255,255,.14)',
+              fontSize: 13,
+              marginBottom: 12,
+            }}
+          >
+            Egészségügyi kártevőirtás
+          </div>
 
-        @media print {
-          html, body {
-            background: white !important;
-          }
-
-          .no-print {
-            display: none !important;
-          }
-
-          .print-sheet {
-            width: 100%;
-            box-shadow: none !important;
-            border: none !important;
-            border-radius: 0 !important;
-            margin: 0 !important;
-          }
-
-          .print-page-break {
-            page-break-before: always;
-          }
-
-          .avoid-break {
-            page-break-inside: avoid;
-          }
-
-          .print-grid-photos {
-            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-          }
-        }
-      `}</style>
-
-      <div className="no-print mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <div className="text-sm text-slate-500">KártevőGuru</div>
-          <h1 className="text-2xl font-extrabold text-slate-900">
-            Publikus munkalap
+          <h1 style={{ margin: 0, fontSize: 34, fontWeight: 800 }}>
+            Munkalap
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Innen megnyitható és nyomtatható a munkalap.
+
+          <p style={{ margin: '8px 0 0 0', opacity: 0.95 }}>
+            KártevőGuru nyilvános megosztás
           </p>
         </div>
 
-        <button
-          onClick={() => {
-            if (typeof window !== 'undefined') window.print()
-          }}
-          className="rounded-xl bg-[#12bf3d] px-5 py-3 font-semibold text-white hover:opacity-90"
-        >
-          Nyomtatás / PDF mentés
-        </button>
-      </div>
-
-      <section className="print-sheet overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-        <div className="border-b border-slate-200 px-8 py-6">
-          <div className="flex items-start justify-between gap-6">
-            <div className="flex items-center gap-4">
-              <div className="shrink-0">
-                <Image
-                  src="/logo.png"
-                  alt="KártevőGuru"
-                  width={170}
-                  height={60}
-                  priority
-                />
-              </div>
-
-              <div>
-                <div className="text-sm font-medium text-slate-500">
-                  KártevőGuru
-                </div>
-                <h2 className="text-2xl font-extrabold tracking-tight text-slate-900">
-                  KÁRTEVŐIRTÁSI MUNKALAP
-                </h2>
-                <div className="mt-2 inline-flex rounded-full bg-gradient-to-r from-[#388cc4] to-[#12bf3d] px-3 py-1 text-xs font-semibold text-white">
-                  Egészségügyi kártevőirtás
-                </div>
+        <div style={{ padding: 24 }}>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 16,
+              marginBottom: 24,
+            }}
+          >
+            <div style={{ padding: 18, border: '1px solid #e5e7eb', borderRadius: 14 }}>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>MUNKALAP SORSZÁM</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#1f2937' }}>
+                {data.order_number || '—'}
               </div>
             </div>
 
-            <div className="shrink-0 text-right">
-              <div className="text-xs uppercase tracking-wide text-slate-500">
-                Munkalap sorszám
+            <div style={{ padding: 18, border: '1px solid #e5e7eb', borderRadius: 14 }}>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>SZOLGÁLTATÁS DÁTUMA</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#1f2937' }}>
+                {formatDate(data.service_date)}
               </div>
-              <div className="mt-1 text-xl font-bold text-slate-900">
-                {workOrder.order_number || '—'}
-              </div>
-              <div className="mt-3 text-xs uppercase tracking-wide text-slate-500">
-                Generálva
-              </div>
-              <div className="mt-1 text-sm font-medium text-slate-700">
-                {formatDateTime(workOrder.created_at)}
+            </div>
+
+            <div style={{ padding: 18, border: '1px solid #e5e7eb', borderRadius: 14 }}>
+              <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>GENERÁLVA</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#1f2937' }}>
+                {formatDateTime(data.created_at)}
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="space-y-6 px-8 py-6 text-[12px] leading-relaxed text-slate-800">
-          <div className="grid grid-cols-2 gap-6 avoid-break">
-            <section>
-              <div className="mb-2 border-b-2 border-slate-300 pb-1">
-                <h3 className="text-lg font-bold text-slate-900">
-                  Szolgáltató adatai
-                </h3>
-              </div>
-
-              <div className="space-y-1.5">
-                <p>
-                  <span className="font-semibold">Szolgáltató:</span> KártevőGuru
-                </p>
-                <p>
-                  <span className="font-semibold">Felelős személy:</span>{' '}
-                  {technicianSignature?.technician_name || 'Tóth Ferenc'}
-                </p>
-                <p>
-                  <span className="font-semibold">Telefon:</span> +36 30 602 0650
-                </p>
-                <p>
-                  <span className="font-semibold">E-mail:</span> info@kartevoguru.hu
-                </p>
-                <p>
-                  <span className="font-semibold">Székhely / cím:</span> 8700
-                  Marcali, Borsó-hegyi út 4779
-                </p>
-                <p>
-                  <span className="font-semibold">Működési nyilv. szám:</span>{' '}
-                  SO-05/neo976-1/2025
-                </p>
-                <p>
-                  <span className="font-semibold">Nyilvántartási szám:</span>{' '}
-                  0099697
-                </p>
-                <p>
-                  <span className="font-semibold">Adószám:</span> 91094722-1-34
-                </p>
-                <p>
-                  <span className="font-semibold">Bankszámlaszám:</span>{' '}
-                  12042847-01896099-00100007
-                </p>
-              </div>
-            </section>
-
-            <section>
-              <div className="mb-2 border-b-2 border-slate-300 pb-1">
-                <h3 className="text-lg font-bold text-slate-900">
-                  Szolgáltatás részletei
-                </h3>
-              </div>
-
-              <div className="space-y-1.5">
-                <p>
-                  <span className="font-semibold">Megrendelő:</span>{' '}
-                  {customer?.name || '—'}
-                </p>
-                <p>
-                  <span className="font-semibold">Kapcsolattartó:</span>{' '}
-                  {customer?.contact_person || '—'}
-                </p>
-                <p>
-                  <span className="font-semibold">Telefonszám:</span>{' '}
-                  {customer?.phone || '—'}
-                </p>
-                <p>
-                  <span className="font-semibold">E-mail:</span>{' '}
-                  {customer?.email || '—'}
-                </p>
-                <p>
-                  <span className="font-semibold">Elvégzés időpontja:</span>{' '}
-                  {formatDate(workOrder.service_date)}
-                </p>
-                <p>
-                  <span className="font-semibold">Munka típusa:</span>{' '}
-                  {workOrder.job_type || '—'}
-                </p>
-                <p>
-                  <span className="font-semibold">Célzott kártevő:</span>{' '}
-                  {workOrder.target_pest || '—'}
-                </p>
-                <p>
-                  <span className="font-semibold">Helyszín:</span>{' '}
-                  {workOrder.address || customer?.address || '—'}
-                </p>
-                <p>
-                  <span className="font-semibold">Státusz:</span>{' '}
-                  {workOrder.status || '—'}
-                </p>
-              </div>
-            </section>
-          </div>
-
-          <section className="avoid-break">
-            <div className="mb-2 border-b-2 border-slate-300 pb-1">
-              <h3 className="text-lg font-bold text-slate-900">
-                Kezelés leírása
-              </h3>
-            </div>
-
-            <div className="min-h-[70px] whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-              {workOrder.treatment_description || '—'}
+          <section style={{ marginBottom: 24 }}>
+            <h2 style={{ fontSize: 22, marginBottom: 12, color: '#1f2937' }}>Ügyfél adatai</h2>
+            <div style={{ padding: 18, border: '1px solid #e5e7eb', borderRadius: 14, background: '#fff' }}>
+              <p><strong>Név:</strong> {data.customer?.name || '—'}</p>
+              <p><strong>Kapcsolattartó:</strong> {data.customer?.contact_person || '—'}</p>
+              <p><strong>Telefon:</strong> {data.customer?.phone || '—'}</p>
+              <p><strong>E-mail:</strong> {data.customer?.email || '—'}</p>
+              <p><strong>Cím:</strong> {data.address || data.customer?.address || '—'}</p>
             </div>
           </section>
 
-          <section className="avoid-break">
-            <div className="mb-2 border-b-2 border-slate-300 pb-1">
-              <h3 className="text-lg font-bold text-slate-900">
-                Felhasznált készítmények
-              </h3>
+          <section style={{ marginBottom: 24 }}>
+            <h2 style={{ fontSize: 22, marginBottom: 12, color: '#1f2937' }}>Kezelés adatai</h2>
+            <div style={{ padding: 18, border: '1px solid #e5e7eb', borderRadius: 14 }}>
+              <p><strong>Munka típusa:</strong> {data.job_type || '—'}</p>
+              <p><strong>Célzott kártevő:</strong> {data.target_pest || '—'}</p>
+              <p><strong>Kezelés leírása:</strong> {data.treatment_description || '—'}</p>
+              <p><strong>Megjegyzés:</strong> {data.notes || '—'}</p>
+              <p><strong>Következő kezelés:</strong> {formatDate(data.next_service_date)}</p>
             </div>
+          </section>
 
-            <div className="overflow-hidden rounded-lg border border-slate-300">
-              <div className="grid grid-cols-4 border-b border-slate-300 bg-slate-100 font-semibold">
-                <div className="px-3 py-2">Termék</div>
-                <div className="px-3 py-2">Mennyiség</div>
-                <div className="px-3 py-2">Alkalmazási technika</div>
-                <div className="px-3 py-2">Célzott kártevő</div>
-              </div>
-
-              {products.length > 0 ? (
-                products.map((product) => (
-                  <div
-                    key={product.id}
-                    className="grid grid-cols-4 border-t border-slate-200 text-sm"
-                  >
-                    <div className="px-3 py-3">{product.product_name || '—'}</div>
-                    <div className="px-3 py-3">{product.quantity || '—'}</div>
-                    <div className="px-3 py-3">{product.method || '—'}</div>
-                    <div className="px-3 py-3">{product.target_pest || '—'}</div>
-                  </div>
-                ))
-              ) : (
-                <div className="grid grid-cols-4 text-sm">
-                  <div className="px-3 py-3">Nincs még külön rögzítve</div>
-                  <div className="px-3 py-3">—</div>
-                  <div className="px-3 py-3">{workOrder.job_type || '—'}</div>
-                  <div className="px-3 py-3">{workOrder.target_pest || '—'}</div>
+          <section style={{ marginBottom: 24 }}>
+            <h2 style={{ fontSize: 22, marginBottom: 12, color: '#1f2937' }}>Felhasznált készítmények</h2>
+            <div style={{ padding: 18, border: '1px solid #e5e7eb', borderRadius: 14 }}>
+              {data.work_order_products && data.work_order_products.length > 0 ? (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  {data.work_order_products.map((item) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        border: '1px solid #e5e7eb',
+                        borderRadius: 12,
+                        padding: 14,
+                        background: '#f8fafc',
+                      }}
+                    >
+                      <p><strong>Készítmény:</strong> {item.product_name || '—'}</p>
+                      <p><strong>Mennyiség:</strong> {item.quantity || '—'}</p>
+                      <p><strong>Módszer:</strong> {item.method || '—'}</p>
+                      <p><strong>Célzott kártevő:</strong> {item.target_pest || '—'}</p>
+                    </div>
+                  ))}
                 </div>
+              ) : (
+                <p>Nincs rögzített készítmény.</p>
               )}
             </div>
           </section>
 
-          <section className="avoid-break">
-            <div className="mb-2 border-b-2 border-slate-300 pb-1">
-              <h3 className="text-lg font-bold text-slate-900">
-                Figyelmeztetések, óvintézkedések és javasolt teendők
-              </h3>
-            </div>
-
-            {workOrder.auto_warnings?.length || workOrder.auto_tasks?.length ? (
-              <div className="grid grid-cols-2 gap-6">
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3">
-                  <div className="mb-2 text-sm font-bold text-rose-700">
-                    Figyelmeztetések
-                  </div>
-
-                  {workOrder.auto_warnings?.length ? (
-                    <ul className="list-disc space-y-1 pl-5 text-[12px] text-slate-800">
-                      {workOrder.auto_warnings.map((item, index) => (
-                        <li key={`warning-${index}`}>{item}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="text-sm text-slate-500">
-                      Nincs automatikus figyelmeztetés.
-                    </div>
+          <section>
+            <h2 style={{ fontSize: 22, marginBottom: 12, color: '#1f2937' }}>Fotók</h2>
+            <div style={{ padding: 18, border: '1px solid #e5e7eb', borderRadius: 14 }}>
+              {data.work_order_photos && data.work_order_photos.length > 0 ? (
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: 16,
+                  }}
+                >
+                  {data.work_order_photos.map((photo) =>
+                    photo.public_url ? (
+                      <div key={photo.id}>
+                        <div
+                          style={{
+                            position: 'relative',
+                            width: '100%',
+                            aspectRatio: '4 / 3',
+                            borderRadius: 12,
+                            overflow: 'hidden',
+                            background: '#e5e7eb',
+                          }}
+                        >
+                          <Image
+                            src={photo.public_url}
+                            alt={photo.file_name || 'Munkalap fotó'}
+                            fill
+                            style={{ objectFit: 'cover' }}
+                            unoptimized
+                          />
+                        </div>
+                        <p style={{ marginTop: 8, fontSize: 13, color: '#475569' }}>
+                          {photo.file_name || 'Fotó'}
+                        </p>
+                      </div>
+                    ) : null
                   )}
                 </div>
-
-                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-                  <div className="mb-2 text-sm font-bold text-[#388cc4]">
-                    Teendők
-                  </div>
-
-                  {workOrder.auto_tasks?.length ? (
-                    <ul className="list-disc space-y-1 pl-5 text-[12px] text-slate-800">
-                      {workOrder.auto_tasks.map((item, index) => (
-                        <li key={`task-${index}`}>{item}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <div className="text-sm text-slate-500">
-                      Nincs automatikus teendő.
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="min-h-[56px] whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                A helyszíni tájékoztatás szerinti óvintézkedések betartása javasolt.
-              </div>
-            )}
-          </section>
-
-          <section className="avoid-break pt-2">
-            <div className="mb-2 border-b-2 border-slate-300 pb-1">
-              <h3 className="text-lg font-bold text-slate-900">Aláírás</h3>
-            </div>
-
-            <div className="grid grid-cols-2 gap-10 pt-4">
-              <div>
-                <div className="mb-4 text-sm text-slate-500">
-                  Szolgáltató aláírás
-                </div>
-
-                {technicianSignature?.signature_data ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <div className="flex h-[90px] items-center justify-center border-b border-slate-400">
-                      <img
-                        src={technicianSignature.signature_data}
-                        alt="Technikus aláírás"
-                        className="max-h-[75px] max-w-full object-contain"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex h-[90px] items-end border-b border-slate-400">
-                    <div className="pb-2 text-sm font-medium text-slate-700">
-                      {technicianSignature?.technician_name || 'Tóth Ferenc'}
-                    </div>
-                  </div>
-                )}
-
-                <div className="mt-2 text-sm font-medium">
-                  {technicianSignature?.technician_name || 'Tóth Ferenc'}
-                </div>
-              </div>
-
-              <div>
-                <div className="mb-4 text-sm text-slate-500">Ügyfél aláírás</div>
-
-                {workOrder.customer_signature_url ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <div className="flex h-[90px] items-center justify-center border-b border-slate-400">
-                      <img
-                        src={workOrder.customer_signature_url}
-                        alt="Ügyfél aláírás"
-                        className="max-h-[75px] max-w-full object-contain"
-                      />
-                    </div>
-                    <div className="mt-2 text-xs text-slate-500">
-                      Aláírva: {formatDateTime(workOrder.signed_at)}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="h-[90px] border-b border-slate-400" />
-                )}
-
-                <div className="mt-2 text-sm font-medium">
-                  {customer?.name || 'Megrendelő'}
-                </div>
-              </div>
+              ) : (
+                <p>Nincs feltöltött fotó.</p>
+              )}
             </div>
           </section>
-
-          <div className="pt-2 text-center text-xs text-slate-400">
-            Dokumentum generálva: {formatDateTime(workOrder.created_at)}
-          </div>
         </div>
-      </section>
-
-      {photos.length > 0 && (
-        <section className="print-sheet mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-          <div className="border-b border-slate-200 px-8 py-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="text-sm font-medium text-slate-500">
-                  KártevőGuru
-                </div>
-                <h3 className="text-2xl font-extrabold tracking-tight text-slate-900">
-                  HELYSZÍNI FOTÓDOKUMENTÁCIÓ
-                </h3>
-                <div className="mt-2 text-sm text-slate-500">
-                  Munkalap: {workOrder.order_number || '—'}
-                </div>
-              </div>
-
-              <Image
-                src="/logo.png"
-                alt="KártevőGuru"
-                width={140}
-                height={50}
-              />
-            </div>
-          </div>
-
-          <div className="print-grid-photos grid grid-cols-2 gap-6 px-8 py-6">
-            {photos.map((photo, index) => (
-              <div
-                key={photo.id}
-                className="avoid-break overflow-hidden rounded-xl border border-slate-200"
-              >
-                <div className="flex h-[240px] items-center justify-center bg-slate-100">
-                  {photo.public_url ? (
-                    <img
-                      src={photo.public_url}
-                      alt={photo.file_name || `Fotó ${index + 1}`}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="text-sm text-slate-400">Nincs előnézet</div>
-                  )}
-                </div>
-
-                <div className="border-t border-slate-200 px-3 py-2 text-sm text-slate-600">
-                  Fotó {index + 1}
-                  {photo.file_name ? ` — ${photo.file_name}` : ''}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      </div>
     </main>
   )
 }
