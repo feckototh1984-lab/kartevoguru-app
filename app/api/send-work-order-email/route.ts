@@ -21,6 +21,11 @@ type CustomerRow = {
 type WorkOrderRow = {
   id: string
   order_number: string | null
+  service_date: string | null
+  job_type: string | null
+  target_pest: string | null
+  address: string | null
+  treatment_description: string | null
   status: string | null
   pdf_file_path: string | null
   completed_at: string | null
@@ -41,6 +46,19 @@ function escapeHtml(value?: string | null) {
     .replaceAll("'", '&#39;')
 }
 
+function formatDate(value?: string | null) {
+  if (!value) return '—'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return new Intl.DateTimeFormat('hu-HU', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(date)
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json()) as SendWorkOrderEmailBody
@@ -58,6 +76,11 @@ export async function POST(req: Request) {
       .select(`
         id,
         order_number,
+        service_date,
+        job_type,
+        target_pest,
+        address,
+        treatment_description,
         status,
         pdf_file_path,
         completed_at,
@@ -97,26 +120,12 @@ export async function POST(req: Request) {
       )
     }
 
-    if (!typedWorkOrder.pdf_file_path) {
+    if (!typedWorkOrder.completed_at) {
       return Response.json(
-        { error: 'A munkalap még nincs véglegesítve, nincs mentett PDF.' },
+        { error: 'A munkalapot előbb véglegesíteni kell.' },
         { status: 400 }
       )
     }
-
-    const { data: pdfFile, error: downloadError } = await supabase.storage
-      .from('work-order-pdfs')
-      .download(typedWorkOrder.pdf_file_path)
-
-    if (downloadError || !pdfFile) {
-      console.error('PDF letöltési hiba:', downloadError)
-      return Response.json(
-        { error: 'Nem sikerült letölteni a mentett PDF-et.' },
-        { status: 500 }
-      )
-    }
-
-    const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
 
     const smtpHost = process.env.SMTP_HOST
     const smtpPort = Number(process.env.SMTP_PORT || 465)
@@ -149,6 +158,32 @@ export async function POST(req: Request) {
 
     const orderNumber = typedWorkOrder.order_number || 'munkalap'
 
+    let attachments: {
+      filename: string
+      content: Buffer
+      contentType: string
+    }[] = []
+
+    if (typedWorkOrder.pdf_file_path) {
+      const { data: pdfFile, error: downloadError } = await supabase.storage
+        .from('work-order-pdfs')
+        .download(typedWorkOrder.pdf_file_path)
+
+      if (!downloadError && pdfFile) {
+        const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
+
+        attachments = [
+          {
+            filename: `${orderNumber}.pdf`,
+            content: pdfBuffer,
+            contentType: 'application/pdf',
+          },
+        ]
+      } else {
+        console.error('PDF letöltési hiba, csatolmány nélkül küldjük:', downloadError)
+      }
+    }
+
     const html = `
 <!DOCTYPE html>
 <html lang="hu">
@@ -167,12 +202,46 @@ export async function POST(req: Request) {
         <p style="margin:0 0 16px;">Kedves ${escapeHtml(customerName)}!</p>
 
         <p style="margin:0 0 16px;">
-          Csatoltan küldjük a KártevőGuru által véglegesített munkalapot.
+          Küldjük a KártevőGuru által véglegesített munkalap adatait.
         </p>
 
         <div style="display:inline-block;background:#eef6ff;color:#388cc4;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:700;margin-bottom:18px;">
           Munkalap sorszám: ${escapeHtml(orderNumber)}
         </div>
+
+        <table style="width:100%;border-collapse:collapse;margin:0 0 18px;">
+          <tr>
+            <td style="padding:8px 0;font-weight:700;width:180px;">Elvégzés időpontja:</td>
+            <td style="padding:8px 0;">${escapeHtml(formatDate(typedWorkOrder.service_date))}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;font-weight:700;">Munka típusa:</td>
+            <td style="padding:8px 0;">${escapeHtml(typedWorkOrder.job_type || '—')}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;font-weight:700;">Célzott kártevő:</td>
+            <td style="padding:8px 0;">${escapeHtml(typedWorkOrder.target_pest || '—')}</td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;font-weight:700;">Helyszín:</td>
+            <td style="padding:8px 0;">${escapeHtml(
+              typedWorkOrder.address || customer?.address || '—'
+            )}</td>
+          </tr>
+        </table>
+
+        <div style="margin:0 0 18px;padding:16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;">
+          <div style="font-weight:700;margin-bottom:8px;">Kezelés leírása</div>
+          <div style="white-space:pre-wrap;line-height:1.7;">${escapeHtml(
+            typedWorkOrder.treatment_description || '—'
+          )}</div>
+        </div>
+
+        ${
+          attachments.length > 0
+            ? `<p style="margin:0 0 18px;line-height:1.7;">A véglegesített munkalapot PDF csatolmányként is mellékeltük.</p>`
+            : `<p style="margin:0 0 18px;line-height:1.7;">A munkalap PDF csatolmányának automatikus küldése jelenleg fejlesztés alatt van, ezért ezt az összefoglalót küldtük el Önnek.</p>`
+        }
 
         <p style="margin:0 0 18px;line-height:1.7;">
           Amennyiben további kérdése van, vagy újabb rovar-, darázs-, poloska-, rágcsálóirtási vagy HACCP szolgáltatásra lenne szüksége, keressen bizalommal.
@@ -192,9 +261,22 @@ export async function POST(req: Request) {
     const text = `
 Kedves ${customerName}!
 
-Csatoltan küldjük a KártevőGuru által véglegesített munkalapot.
+Küldjük a KártevőGuru által véglegesített munkalap adatait.
 
 Munkalap sorszáma: ${orderNumber}
+Elvégzés időpontja: ${formatDate(typedWorkOrder.service_date)}
+Munka típusa: ${typedWorkOrder.job_type || '—'}
+Célzott kártevő: ${typedWorkOrder.target_pest || '—'}
+Helyszín: ${typedWorkOrder.address || customer?.address || '—'}
+
+Kezelés leírása:
+${typedWorkOrder.treatment_description || '—'}
+
+${
+  attachments.length > 0
+    ? 'A véglegesített munkalapot PDF csatolmányként is mellékeltük.'
+    : 'A munkalap PDF csatolmányának automatikus küldése jelenleg fejlesztés alatt van, ezért ezt az összefoglalót küldtük el Önnek.'
+}
 
 Amennyiben további kérdése van, vagy újabb rovar-, darázs-, poloska-, rágcsálóirtási vagy HACCP szolgáltatásra lenne szüksége, keressen bizalommal.
 
@@ -212,13 +294,7 @@ info@kartevoguru.hu
       subject: `KártevőGuru munkalap – ${orderNumber}`,
       html,
       text,
-      attachments: [
-        {
-          filename: `${orderNumber}.pdf`,
-          content: pdfBuffer,
-          contentType: 'application/pdf',
-        },
-      ],
+      attachments,
     })
 
     return Response.json({ success: true })
