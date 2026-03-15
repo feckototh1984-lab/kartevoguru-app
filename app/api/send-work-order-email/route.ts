@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic'
 
 type SendWorkOrderEmailBody = {
   workOrderId?: string | null
+  publicToken?: string | null
   customerEmail?: string | null
   customerName?: string | null
   orderNumber?: string | null
@@ -23,6 +24,7 @@ export async function POST(req: Request) {
     const body = (await req.json()) as SendWorkOrderEmailBody
 
     const workOrderId = body.workOrderId?.trim()
+    const publicToken = body.publicToken?.trim()
     const customerEmail = body.customerEmail?.trim()
     const customerName = body.customerName?.trim() || 'Ügyfelünk'
     const orderNumber = formatSafe(body.orderNumber)
@@ -41,6 +43,13 @@ export async function POST(req: Request) {
     if (!workOrderId) {
       return Response.json(
         { error: 'Hiányzik a munkalap azonosítója (workOrderId).' },
+        { status: 400 }
+      )
+    }
+
+    if (!publicToken) {
+      return Response.json(
+        { error: 'Hiányzik a publikus token (publicToken).' },
         { status: 400 }
       )
     }
@@ -71,7 +80,7 @@ export async function POST(req: Request) {
     const requestUrl = new URL(req.url)
     const origin = requestUrl.origin
 
-    const pdfPageUrl = `${origin}/work-orders/${workOrderId}/pdf`
+    const shareUrl = `${origin}/share/${publicToken}`
 
     await transporter.sendMail({
       from: `KártevőGuru <${mailFrom}>`,
@@ -107,7 +116,7 @@ export async function POST(req: Request) {
 
       <div style="margin:24px 0;">
         <a
-          href="${pdfPageUrl}"
+          href="${shareUrl}"
           style="display:inline-block;background:#12bf3d;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:700;"
         >
           Munkalap megnyitása
@@ -119,7 +128,7 @@ export async function POST(req: Request) {
       </p>
 
       <p style="margin:0 0 20px;word-break:break-all;font-size:14px;color:#388cc4;">
-        ${pdfPageUrl}
+        ${shareUrl}
       </p>
 
       <p style="margin:0 0 16px;">
@@ -147,7 +156,7 @@ Célzott kártevő: ${targetPest}
 Helyszín: ${address}
 
 A munkalap megnyitása:
-${pdfPageUrl}
+${shareUrl}
 
 Üdvözlettel:
 KártevőGuru
