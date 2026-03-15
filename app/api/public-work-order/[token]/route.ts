@@ -34,7 +34,7 @@ export async function GET(
       .from('work_orders')
       .select(`
         id,
-        order_number,
+        work_order_number,
         service_date,
         address,
         job_type,
@@ -67,14 +67,25 @@ export async function GET(
       .eq('public_token', token)
       .single()
 
-    if (error || !data) {
+    if (error) {
+      console.error('PUBLIC WORK ORDER QUERY ERROR:', error)
+      return NextResponse.json(
+        { error: `Lekérdezési hiba: ${error.message}` },
+        { status: 500 }
+      )
+    }
+
+    if (!data) {
       return NextResponse.json(
         { error: 'A munkalap nem található ehhez a tokenhez.' },
         { status: 404 }
       )
     }
 
-    return NextResponse.json(data)
+    return NextResponse.json({
+      ...data,
+      order_number: data.work_order_number,
+    })
   } catch (error) {
     console.error('PUBLIC WORK ORDER API ERROR:', error)
 
