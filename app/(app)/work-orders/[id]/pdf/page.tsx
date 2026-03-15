@@ -213,10 +213,37 @@ export default function WorkOrderPdfPage() {
     const canvas = await html2canvas(element, {
       scale: 2,
       useCORS: true,
+      allowTaint: true,
       backgroundColor: '#ffffff',
       logging: false,
       windowWidth: element.scrollWidth,
       windowHeight: element.scrollHeight,
+      ignoreElements: (el) => el.classList?.contains('no-print'),
+      onclone: (doc) => {
+        const allElements = doc.querySelectorAll('*')
+
+        allElements.forEach((node) => {
+          if (!(node instanceof HTMLElement)) return
+
+          const style = window.getComputedStyle(node)
+
+          if (style.color?.includes('lab(')) {
+            node.style.color = '#0f172a'
+          }
+          if (style.backgroundColor?.includes('lab(')) {
+            node.style.backgroundColor = '#ffffff'
+          }
+          if (style.borderColor?.includes('lab(')) {
+            node.style.borderColor = '#cbd5e1'
+          }
+          if (style.outlineColor?.includes('lab(')) {
+            node.style.outlineColor = '#cbd5e1'
+          }
+          if (style.textDecorationColor?.includes('lab(')) {
+            node.style.textDecorationColor = '#0f172a'
+          }
+        })
+      },
     })
 
     const imgData = canvas.toDataURL('image/png')
