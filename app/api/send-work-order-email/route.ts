@@ -79,8 +79,7 @@ export async function POST(req: Request) {
 
     const requestUrl = new URL(req.url)
     const origin = requestUrl.origin
-
-    const shareUrl = `${origin}/share/work-order/${publicToken}`
+    const shareUrl = `${origin}/share/work-order/${encodeURIComponent(publicToken)}`
 
     await transporter.sendMail({
       from: `KártevőGuru <${mailFrom}>`,
@@ -118,6 +117,8 @@ export async function POST(req: Request) {
         <a
           href="${shareUrl}"
           style="display:inline-block;background:#12bf3d;color:#ffffff;text-decoration:none;padding:14px 22px;border-radius:12px;font-weight:700;"
+          target="_blank"
+          rel="noopener noreferrer"
         >
           Munkalap megnyitása
         </a>
