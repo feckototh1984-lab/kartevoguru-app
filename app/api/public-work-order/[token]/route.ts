@@ -23,101 +23,64 @@ export async function GET(
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
       return NextResponse.json(
-        { error: 'Hiányzik a Supabase környezeti változó.' },
+        { error: 'Hiányzó Supabase környezeti változó.' },
         { status: 500 }
       )
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
-    const { data: workOrder, error: workOrderError } = await supabase
+    const { data, error } = await supabase
       .from('work_orders')
       .select(`
         id,
         order_number,
         service_date,
+        address,
         job_type,
         target_pest,
-        address,
         treatment_description,
-        status,
+        notes,
+        next_service_date,
         created_at,
-        customer_signature_url,
-        signed_at,
-        auto_warnings,
-        auto_tasks,
-        customers (
+        customer:customers (
           name,
           contact_person,
           phone,
           email,
-          address,
-          customer_type,
-          notes
+          address
+        ),
+        work_order_products (
+          id,
+          product_name,
+          quantity,
+          method,
+          target_pest
+        ),
+        work_order_photos (
+          id,
+          file_name,
+          public_url,
+          created_at
         )
       `)
       .eq('public_token', token)
       .single()
 
-    if (workOrderError || !workOrder) {
+    if (error || !data) {
       return NextResponse.json(
         { error: 'A munkalap nem található ehhez a tokenhez.' },
         { status: 404 }
       )
     }
 
-    const workOrderId = workOrder.id
-
-    const { data: photos, error: photoError } = await supabase
-      .from('work_order_photos')
-      .select('*')
-      .eq('work_order_id', workOrderId)
-      .order('created_at', { ascending: true })
-
-    if (photoError) {
-      return NextResponse.json(
-        { error: `Fotók betöltési hiba: ${photoError.message}` },
-        { status: 500 }
-      )
-    }
-
-    const { data: products, error: productError } = await supabase
-      .from('work_order_products')
-      .select('*')
-      .eq('work_order_id', workOrderId)
-      .order('created_at', { ascending: true })
-
-    if (productError) {
-      return NextResponse.json(
-        { error: `Készítmények betöltési hiba: ${productError.message}` },
-        { status: 500 }
-      )
-    }
-
-    const { data: technicianSignature, error: technicianError } = await supabase
-      .from('technician_signatures')
-      .select('*')
-      .order('updated_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (technicianError) {
-      return NextResponse.json(
-        { error: `Technikus aláírás betöltési hiba: ${technicianError.message}` },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({
-      workOrder,
-      photos: photos || [],
-      products: products || [],
-      technicianSignature: technicianSignature || null,
-    })
+    return NextResponse.json(data)
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Ismeretlen szerverhiba történt.'
+    console.error('PUBLIC WORK ORDER API ERROR:', error)
 
-    return NextResponse.json({ error: message }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Szerverhiba történt.' },
+      { status: 500 }
+    )
   }
 }
