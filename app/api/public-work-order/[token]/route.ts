@@ -15,10 +15,7 @@ export async function GET(
     const { token } = await context.params
 
     if (!token) {
-      return NextResponse.json(
-        { error: 'Hiányzó token.' },
-        { status: 400 }
-      )
+      return NextResponse.json({ error: 'Hiányzó token.' }, { status: 400 })
     }
 
     if (!supabaseUrl || !supabaseServiceRoleKey) {
@@ -40,9 +37,9 @@ export async function GET(
         job_type,
         target_pest,
         treatment_description,
-        notes,
         next_service_date,
         created_at,
+        public_token,
         customer:customers (
           name,
           contact_person,
@@ -85,6 +82,7 @@ export async function GET(
     return NextResponse.json({
       ...data,
       order_number: data.work_order_number,
+      notes: null,
     })
   } catch (error) {
     console.error('PUBLIC WORK ORDER API ERROR:', error)
