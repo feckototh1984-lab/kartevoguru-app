@@ -59,6 +59,8 @@ type WorkOrderDetails = {
   signed_at: string | null
   auto_warnings: string[] | null
   auto_tasks: string[] | null
+  pdf_file_path?: string | null
+  completed_at?: string | null
   customers: CustomerDetails | CustomerDetails[] | null
 }
 
@@ -107,6 +109,7 @@ export default function WorkOrderPdfPage() {
   const [loading, setLoading] = useState(true)
   const [errorText, setErrorText] = useState('')
   const [sendingEmail, setSendingEmail] = useState(false)
+  const [completingWork, setCompletingWork] = useState(false)
 
   useEffect(() => {
     async function loadWorkOrder() {
@@ -131,6 +134,8 @@ export default function WorkOrderPdfPage() {
           signed_at,
           auto_warnings,
           auto_tasks,
+          pdf_file_path,
+          completed_at,
           customers (
             name,
             contact_person,
@@ -202,6 +207,8 @@ export default function WorkOrderPdfPage() {
   const customer = Array.isArray(workOrder?.customers)
     ? workOrder.customers[0]
     : workOrder?.customers
+
+  const isCompleted = !!workOrder?.pdf_file_path
 
   async function generatePdfBlob() {
     if (!pdfContentRef.current) {
@@ -278,16 +285,11 @@ export default function WorkOrderPdfPage() {
     return pdf.output('blob')
   }
 
-  async function handleSendEmail() {
+  async function handleCompleteWork() {
     if (!workOrder) return
 
-    if (!customer?.email?.trim()) {
-      alert('Az ügyfélhez nincs e-mail cím rögzítve.')
-      return
-    }
-
     try {
-      setSendingEmail(true)
+      setCompletingWork(true)
 
       const pdfBlob = await generatePdfBlob()
 
@@ -297,14 +299,64 @@ export default function WorkOrderPdfPage() {
         pdfBlob,
         `${workOrder.order_number || 'munkalap'}.pdf`
       )
-      formData.append('workOrderId', workOrder.id)
-      formData.append('customerEmail', customer.email.trim())
-      formData.append('customerName', customer.name || '')
-      formData.append('workOrderNumber', workOrder.order_number || '')
+
+      const response = await fetch(`/api/work-orders/${workOrder.id}/complete`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result?.error || 'Nem sikerült a munka befejezése.')
+      }
+
+      setWorkOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: 'completed',
+              pdf_file_path: result.pdf_file_path || prev.pdf_file_path,
+              completed_at: new Date().toISOString(),
+            }
+          : prev
+      )
+
+      alert('A munkalap véglegesítve lett, a PDF elmentve.')
+    } catch (error) {
+      console.error(error)
+      const message =
+        error instanceof Error ? error.message : 'Ismeretlen hiba történt.'
+      alert(message)
+    } finally {
+      setCompletingWork(false)
+    }
+  }
+
+  async function handleSendEmail() {
+    if (!workOrder) return
+
+    if (!customer?.email?.trim()) {
+      alert('Az ügyfélhez nincs e-mail cím rögzítve.')
+      return
+    }
+
+    if (!workOrder.pdf_file_path) {
+      alert('Előbb a "Munka befejezése" gombbal véglegesíteni kell a munkalapot.')
+      return
+    }
+
+    try {
+      setSendingEmail(true)
 
       const response = await fetch('/api/send-work-order-email', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workOrderId: workOrder.id,
+        }),
       })
 
       const result = await response.json()
@@ -373,8 +425,13 @@ export default function WorkOrderPdfPage() {
             Nyomtatható munkalap
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Innen nyomtathatod vagy e-mailben is elküldheted a munkalapot.
+            Előbb véglegesítsd a munkalapot, utána küldd el e-mailben.
           </p>
+          {isCompleted && (
+            <p className="mt-2 text-sm font-medium text-green-700">
+              Munkalap véglegesítve • {formatDateTime(workOrder?.completed_at)}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-wrap gap-3">
@@ -386,11 +443,19 @@ export default function WorkOrderPdfPage() {
           </button>
 
           <button
+            onClick={handleCompleteWork}
+            disabled={completingWork || loading || !workOrder}
+            className="rounded-xl bg-slate-900 px-5 py-3 font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {completingWork ? 'Véglegesítés...' : 'Munka befejezése'}
+          </button>
+
+          <button
             onClick={handleSendEmail}
-            disabled={sendingEmail || loading || !workOrder}
+            disabled={sendingEmail || loading || !workOrder || !isCompleted}
             className="rounded-xl bg-[#388cc4] px-5 py-3 font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {sendingEmail ? 'Küldés folyamatban...' : 'Küldés e-mailben'}
+            {sendingEmail ? 'Küldés folyamatban...' : 'E-mail küldése'}
           </button>
 
           <Link
@@ -473,42 +538,15 @@ export default function WorkOrderPdfPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <p>
-                      <span className="font-semibold">Szolgáltató:</span>{' '}
-                      KártevőGuru
-                    </p>
-                    <p>
-                      <span className="font-semibold">Felelős személy:</span>{' '}
-                      {technicianSignature?.technician_name || 'Tóth Ferenc'}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Telefon:</span>{' '}
-                      +36 30 602 0650
-                    </p>
-                    <p>
-                      <span className="font-semibold">E-mail:</span>{' '}
-                      info@kartevoguru.hu
-                    </p>
-                    <p>
-                      <span className="font-semibold">Székhely / cím:</span>{' '}
-                      8700 Marcali, Borsó-hegyi út 4779
-                    </p>
-                    <p>
-                      <span className="font-semibold">Működési nyilv. szám:</span>{' '}
-                      SO-05/neo976-1/2025
-                    </p>
-                    <p>
-                      <span className="font-semibold">Nyilvántartási szám:</span>{' '}
-                      0099697
-                    </p>
-                    <p>
-                      <span className="font-semibold">Adószám:</span>{' '}
-                      91094722-1-34
-                    </p>
-                    <p>
-                      <span className="font-semibold">Bankszámlaszám:</span>{' '}
-                      12042847-01896099-00100007
-                    </p>
+                    <p><span className="font-semibold">Szolgáltató:</span> KártevőGuru</p>
+                    <p><span className="font-semibold">Felelős személy:</span> {technicianSignature?.technician_name || 'Tóth Ferenc'}</p>
+                    <p><span className="font-semibold">Telefon:</span> +36 30 602 0650</p>
+                    <p><span className="font-semibold">E-mail:</span> info@kartevoguru.hu</p>
+                    <p><span className="font-semibold">Székhely / cím:</span> 8700 Marcali, Borsó-hegyi út 4779</p>
+                    <p><span className="font-semibold">Működési nyilv. szám:</span> SO-05/neo976-1/2025</p>
+                    <p><span className="font-semibold">Nyilvántartási szám:</span> 0099697</p>
+                    <p><span className="font-semibold">Adószám:</span> 91094722-1-34</p>
+                    <p><span className="font-semibold">Bankszámlaszám:</span> 12042847-01896099-00100007</p>
                   </div>
                 </section>
 
@@ -520,42 +558,15 @@ export default function WorkOrderPdfPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <p>
-                      <span className="font-semibold">Megrendelő:</span>{' '}
-                      {customer?.name || '—'}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Kapcsolattartó:</span>{' '}
-                      {customer?.contact_person || '—'}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Telefonszám:</span>{' '}
-                      {customer?.phone || '—'}
-                    </p>
-                    <p>
-                      <span className="font-semibold">E-mail:</span>{' '}
-                      {customer?.email || '—'}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Elvégzés időpontja:</span>{' '}
-                      {formatDate(workOrder.service_date)}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Munka típusa:</span>{' '}
-                      {workOrder.job_type || '—'}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Célzott kártevő:</span>{' '}
-                      {workOrder.target_pest || '—'}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Helyszín:</span>{' '}
-                      {workOrder.address || customer?.address || '—'}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Státusz:</span>{' '}
-                      {workOrder.status || '—'}
-                    </p>
+                    <p><span className="font-semibold">Megrendelő:</span> {customer?.name || '—'}</p>
+                    <p><span className="font-semibold">Kapcsolattartó:</span> {customer?.contact_person || '—'}</p>
+                    <p><span className="font-semibold">Telefonszám:</span> {customer?.phone || '—'}</p>
+                    <p><span className="font-semibold">E-mail:</span> {customer?.email || '—'}</p>
+                    <p><span className="font-semibold">Elvégzés időpontja:</span> {formatDate(workOrder.service_date)}</p>
+                    <p><span className="font-semibold">Munka típusa:</span> {workOrder.job_type || '—'}</p>
+                    <p><span className="font-semibold">Célzott kártevő:</span> {workOrder.target_pest || '—'}</p>
+                    <p><span className="font-semibold">Helyszín:</span> {workOrder.address || customer?.address || '—'}</p>
+                    <p><span className="font-semibold">Státusz:</span> {workOrder.status || '—'}</p>
                   </div>
                 </section>
               </div>
@@ -568,8 +579,7 @@ export default function WorkOrderPdfPage() {
                 </div>
 
                 <p>
-                  {technicianSignature?.technician_name || 'Tóth Ferenc'} (Működési
-                  nyilvántartási szám: SO-05/neo976-1/2025)
+                  {technicianSignature?.technician_name || 'Tóth Ferenc'} (Működési nyilvántartási szám: SO-05/neo976-1/2025)
                 </p>
               </section>
 
@@ -581,18 +591,9 @@ export default function WorkOrderPdfPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                  <div>
-                    <span className="font-semibold">Ügyfél címe:</span>{' '}
-                    {customer?.address || '—'}
-                  </div>
-                  <div>
-                    <span className="font-semibold">Ügyfél típusa:</span>{' '}
-                    {customer?.customer_type || '—'}
-                  </div>
-                  <div className="col-span-2">
-                    <span className="font-semibold">Megjegyzés:</span>{' '}
-                    {customer?.notes || '—'}
-                  </div>
+                  <div><span className="font-semibold">Ügyfél címe:</span> {customer?.address || '—'}</div>
+                  <div><span className="font-semibold">Ügyfél típusa:</span> {customer?.customer_type || '—'}</div>
+                  <div className="col-span-2"><span className="font-semibold">Megjegyzés:</span> {customer?.notes || '—'}</div>
                 </div>
               </section>
 
@@ -629,30 +630,18 @@ export default function WorkOrderPdfPage() {
                         key={product.id}
                         className="grid grid-cols-4 border-t border-slate-200 text-sm"
                       >
-                        <div className="px-3 py-3">
-                          {product.product_name || '—'}
-                        </div>
-                        <div className="px-3 py-3">
-                          {product.quantity || '—'}
-                        </div>
-                        <div className="px-3 py-3">
-                          {product.method || '—'}
-                        </div>
-                        <div className="px-3 py-3">
-                          {product.target_pest || '—'}
-                        </div>
+                        <div className="px-3 py-3">{product.product_name || '—'}</div>
+                        <div className="px-3 py-3">{product.quantity || '—'}</div>
+                        <div className="px-3 py-3">{product.method || '—'}</div>
+                        <div className="px-3 py-3">{product.target_pest || '—'}</div>
                       </div>
                     ))
                   ) : (
                     <div className="grid grid-cols-4 text-sm">
                       <div className="px-3 py-3">Nincs még külön rögzítve</div>
                       <div className="px-3 py-3">—</div>
-                      <div className="px-3 py-3">
-                        {workOrder.job_type || '—'}
-                      </div>
-                      <div className="px-3 py-3">
-                        {workOrder.target_pest || '—'}
-                      </div>
+                      <div className="px-3 py-3">{workOrder.job_type || '—'}</div>
+                      <div className="px-3 py-3">{workOrder.target_pest || '—'}</div>
                     </div>
                   )}
                 </div>

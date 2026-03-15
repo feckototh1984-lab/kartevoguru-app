@@ -1,38 +1,122 @@
 import nodemailer from 'nodemailer'
+import { createClient } from '@supabase/supabase-js'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
+type SendWorkOrderEmailBody = {
+  workOrderId?: string | null
+}
+
+type CustomerRow = {
+  name: string | null
+  contact_person: string | null
+  phone: string | null
+  email: string | null
+  address: string | null
+  customer_type: string | null
+  notes: string | null
+}
+
+type WorkOrderRow = {
+  id: string
+  order_number: string | null
+  status: string | null
+  pdf_file_path: string | null
+  completed_at: string | null
+  customers: CustomerRow | CustomerRow[] | null
+}
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+function escapeHtml(value?: string | null) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
 export async function POST(req: Request) {
   try {
-    const formData = await req.formData()
-
-    const pdfFile = formData.get('pdf')
-    const workOrderId = String(formData.get('workOrderId') || '').trim()
-    const customerEmail = String(formData.get('customerEmail') || '').trim()
-    const customerName = String(formData.get('customerName') || '').trim()
-    const workOrderNumber = String(formData.get('workOrderNumber') || '').trim()
+    const body = (await req.json()) as SendWorkOrderEmailBody
+    const workOrderId = body.workOrderId?.trim()
 
     if (!workOrderId) {
       return Response.json(
-        { error: 'Hiányzik a munkalap azonosítója.' },
+        { error: 'Hiányzik a munkalap azonosítója (workOrderId).' },
         { status: 400 }
       )
     }
+
+    const { data: workOrder, error: workOrderError } = await supabase
+      .from('work_orders')
+      .select(`
+        id,
+        order_number,
+        status,
+        pdf_file_path,
+        completed_at,
+        customers (
+          name,
+          contact_person,
+          phone,
+          email,
+          address,
+          customer_type,
+          notes
+        )
+      `)
+      .eq('id', workOrderId)
+      .single()
+
+    if (workOrderError || !workOrder) {
+      console.error('Munkalap lekérési hiba:', workOrderError)
+      return Response.json(
+        { error: 'A munkalap nem található.' },
+        { status: 404 }
+      )
+    }
+
+    const typedWorkOrder = workOrder as unknown as WorkOrderRow
+
+    const customer = Array.isArray(typedWorkOrder.customers)
+      ? typedWorkOrder.customers[0]
+      : typedWorkOrder.customers
+
+    const customerEmail = customer?.email?.trim()
 
     if (!customerEmail) {
       return Response.json(
-        { error: 'Hiányzik az ügyfél e-mail címe.' },
+        { error: 'Az ügyfélhez nincs e-mail cím rögzítve.' },
         { status: 400 }
       )
     }
 
-    if (!pdfFile || !(pdfFile instanceof File)) {
+    if (!typedWorkOrder.pdf_file_path) {
       return Response.json(
-        { error: 'Hiányzik a PDF csatolmány.' },
+        { error: 'A munkalap még nincs véglegesítve, nincs mentett PDF.' },
         { status: 400 }
       )
     }
+
+    const { data: pdfFile, error: downloadError } = await supabase.storage
+      .from('work-order-pdfs')
+      .download(typedWorkOrder.pdf_file_path)
+
+    if (downloadError || !pdfFile) {
+      console.error('PDF letöltési hiba:', downloadError)
+      return Response.json(
+        { error: 'Nem sikerült letölteni a mentett PDF-et.' },
+        { status: 500 }
+      )
+    }
+
+    const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
 
     const smtpHost = process.env.SMTP_HOST
     const smtpPort = Number(process.env.SMTP_PORT || 465)
@@ -48,8 +132,6 @@ export async function POST(req: Request) {
       )
     }
 
-    const pdfBuffer = Buffer.from(await pdfFile.arrayBuffer())
-
     const transporter = nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
@@ -60,15 +142,19 @@ export async function POST(req: Request) {
       },
     })
 
-    const safeCustomerName = customerName || 'Ügyfelünk'
-    const safeWorkOrderNumber = workOrderNumber || 'munkalap'
+    const customerName =
+      customer?.contact_person?.trim() ||
+      customer?.name?.trim() ||
+      'Ügyfelünk'
+
+    const orderNumber = typedWorkOrder.order_number || 'munkalap'
 
     const html = `
 <!DOCTYPE html>
 <html lang="hu">
   <head>
     <meta charSet="utf-8" />
-    <title>KártevőGuru munkalap – ${safeWorkOrderNumber}</title>
+    <title>KártevőGuru munkalap – ${escapeHtml(orderNumber)}</title>
   </head>
   <body style="margin:0;padding:0;background:#f8fafc;font-family:Arial,sans-serif;color:#1f2937;">
     <div style="max-width:700px;margin:0 auto;padding:24px 16px;">
@@ -78,18 +164,18 @@ export async function POST(req: Request) {
       </div>
 
       <div style="background:#ffffff;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 16px 16px;padding:24px;">
-        <p style="margin:0 0 16px;">Kedves ${safeCustomerName}!</p>
+        <p style="margin:0 0 16px;">Kedves ${escapeHtml(customerName)}!</p>
 
         <p style="margin:0 0 16px;">
-          Csatoltan küldjük a KártevőGuru által elkészített munkalapot.
+          Csatoltan küldjük a KártevőGuru által véglegesített munkalapot.
         </p>
 
         <div style="display:inline-block;background:#eef6ff;color:#388cc4;padding:8px 12px;border-radius:999px;font-size:12px;font-weight:700;margin-bottom:18px;">
-          Munkalap sorszám: ${safeWorkOrderNumber}
+          Munkalap sorszám: ${escapeHtml(orderNumber)}
         </div>
 
         <p style="margin:0 0 18px;line-height:1.7;">
-          Amennyiben további kérdése van, vagy újabb rovar-, darázs-, poloska-, rágcsálóirtási vagy HACCP kapcsolódó szolgáltatásra lenne szüksége, keressen bizalommal.
+          Amennyiben további kérdése van, vagy újabb rovar-, darázs-, poloska-, rágcsálóirtási vagy HACCP szolgáltatásra lenne szüksége, keressen bizalommal.
         </p>
 
         <div style="margin-top:28px;padding:16px;background:#0b1f33;color:#bfdbfe;border-radius:12px;">
@@ -104,13 +190,13 @@ export async function POST(req: Request) {
 `
 
     const text = `
-Kedves ${safeCustomerName}!
+Kedves ${customerName}!
 
-Csatoltan küldjük a KártevőGuru által elkészített munkalapot.
+Csatoltan küldjük a KártevőGuru által véglegesített munkalapot.
 
-Munkalap sorszáma: ${safeWorkOrderNumber}
+Munkalap sorszáma: ${orderNumber}
 
-Amennyiben további kérdése van, vagy újabb rovar-, darázs-, poloska-, rágcsálóirtási vagy HACCP kapcsolódó szolgáltatásra lenne szüksége, keressen bizalommal.
+Amennyiben további kérdése van, vagy újabb rovar-, darázs-, poloska-, rágcsálóirtási vagy HACCP szolgáltatásra lenne szüksége, keressen bizalommal.
 
 Üdvözlettel:
 KártevőGuru
@@ -123,12 +209,12 @@ info@kartevoguru.hu
       to: customerEmail,
       cc: 'info@kartevoguru.hu',
       bcc: mailBcc || undefined,
-      subject: `KártevőGuru munkalap – ${safeWorkOrderNumber}`,
+      subject: `KártevőGuru munkalap – ${orderNumber}`,
       html,
       text,
       attachments: [
         {
-          filename: `${safeWorkOrderNumber}.pdf`,
+          filename: `${orderNumber}.pdf`,
           content: pdfBuffer,
           contentType: 'application/pdf',
         },
