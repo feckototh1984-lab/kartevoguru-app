@@ -351,15 +351,7 @@ export default function WorkOrderPdfPage() {
           >
             Nyomtatás / PDF mentés
           </button>
-
-          <button
-            onClick={handleSendEmail}
-            disabled={sendingEmail || loading || !workOrder}
-            className="rounded-xl bg-[#388cc4] px-5 py-3 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {sendingEmail ? 'Küldés folyamatban...' : 'E-mail küldése'}
-          </button>
-
+          
           <Link
             href={`/work-orders/${id}`}
             className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-center text-sm font-semibold hover:bg-slate-50"
