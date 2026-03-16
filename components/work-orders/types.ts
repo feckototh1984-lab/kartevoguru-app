@@ -46,6 +46,7 @@ export type WorkOrderDetails = {
   treatment_description: string | null
   status: string | null
   created_at: string
+  completed_at: string | null
   customer_signature_url: string | null
   signed_at: string | null
   auto_warnings: string[] | null
