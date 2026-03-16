@@ -12,6 +12,32 @@ type Customer = {
 
 type CustomerMode = 'existing' | 'new'
 
+const JOB_TYPE_OPTIONS = [
+  'Rovarirtás',
+  'Rágcsálóirtás',
+  'Fertőtlenítés',
+  'HACCP ellenőrzés',
+  'HACCP kártevőirtás',
+  'Monitoring',
+  'Sürgősségi kiszállás',
+  'Egyéb',
+]
+
+const TARGET_PEST_OPTIONS = [
+  'Csótány',
+  'Ágyi poloska',
+  'Pók',
+  'Darázs',
+  'Hangya',
+  'Egér',
+  'Patkány',
+  'Légy',
+  'Bolha',
+  'Moly',
+  'Árvaszúnyog',
+  'Egyéb',
+]
+
 export default function NewWorkOrderPage() {
   const router = useRouter()
 
@@ -27,6 +53,7 @@ export default function NewWorkOrderPage() {
     address: '',
     job_type: '',
     target_pest: '',
+    price: '',
     treatment_description: '',
   })
 
@@ -65,7 +92,12 @@ export default function NewWorkOrderPage() {
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
 
-    if (!form.service_date || !form.address || !form.job_type || !form.target_pest) {
+    if (
+      !form.service_date ||
+      !form.address ||
+      !form.job_type ||
+      !form.target_pest
+    ) {
       alert('Töltsd ki a kötelező mezőket.')
       return
     }
@@ -124,6 +156,7 @@ export default function NewWorkOrderPage() {
       address: form.address,
       job_type: form.job_type,
       target_pest: form.target_pest,
+      price: form.price ? Number(form.price) : null,
       treatment_description: form.treatment_description || null,
       status: 'scheduled',
     }
@@ -346,21 +379,51 @@ export default function NewWorkOrderPage() {
 
             <div>
               <label className="block text-sm font-semibold mb-2">Munka típusa *</label>
-              <input
+              <select
                 className="w-full border border-slate-300 rounded-xl px-4 py-3"
-                placeholder="Pl. rovarirtás"
                 value={form.job_type}
                 onChange={(e) => setForm({ ...form, job_type: e.target.value })}
-              />
+              >
+                <option value="">Munka típusa kiválasztása</option>
+                {JOB_TYPE_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
               <label className="block text-sm font-semibold mb-2">Célzott kártevő *</label>
-              <input
+              <select
                 className="w-full border border-slate-300 rounded-xl px-4 py-3"
-                placeholder="Pl. csótány"
                 value={form.target_pest}
                 onChange={(e) => setForm({ ...form, target_pest: e.target.value })}
+              >
+                <option value="">Célzott kártevő kiválasztása</option>
+                {TARGET_PEST_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold mb-2">Ár (Ft)</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                className="w-full border border-slate-300 rounded-xl px-4 py-3"
+                placeholder="Pl. 25000"
+                value={form.price}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    price: e.target.value.replace(/[^\d]/g, ''),
+                  })
+                }
               />
             </div>
 
@@ -375,7 +438,9 @@ export default function NewWorkOrderPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="block text-sm font-semibold mb-2">Előzetes megjegyzés / feladatleírás</label>
+              <label className="block text-sm font-semibold mb-2">
+                Előzetes megjegyzés / feladatleírás
+              </label>
               <textarea
                 className="w-full border border-slate-300 rounded-xl px-4 py-3 min-h-28"
                 placeholder="Pl. visszatérő csótányészlelés a konyhában, helyszínen pontosítani kell..."
