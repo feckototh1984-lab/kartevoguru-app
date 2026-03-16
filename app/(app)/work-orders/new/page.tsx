@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -40,6 +40,8 @@ const TARGET_PEST_OPTIONS = [
 
 export default function NewWorkOrderPage() {
   const router = useRouter()
+
+  const locationManuallyEditedRef = useRef(false)
 
   const [customers, setCustomers] = useState<Customer[]>([])
   const [customersLoading, setCustomersLoading] = useState(true)
@@ -88,6 +90,17 @@ export default function NewWorkOrderPage() {
 
     loadCustomers()
   }, [])
+
+  useEffect(() => {
+    if (customerMode !== 'new') return
+    if (!newCustomer.address.trim()) return
+    if (locationManuallyEditedRef.current) return
+
+    setForm((prev) => ({
+      ...prev,
+      address: newCustomer.address,
+    }))
+  }, [newCustomer.address, customerMode])
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
@@ -212,7 +225,10 @@ export default function NewWorkOrderPage() {
           <div className="flex gap-3 flex-wrap mb-4">
             <button
               type="button"
-              onClick={() => setCustomerMode('existing')}
+              onClick={() => {
+                locationManuallyEditedRef.current = false
+                setCustomerMode('existing')
+              }}
               className={`px-4 py-2 rounded-xl font-semibold border ${
                 customerMode === 'existing'
                   ? 'bg-[#388cc4] text-white border-[#388cc4]'
@@ -224,7 +240,10 @@ export default function NewWorkOrderPage() {
 
             <button
               type="button"
-              onClick={() => setCustomerMode('new')}
+              onClick={() => {
+                locationManuallyEditedRef.current = false
+                setCustomerMode('new')
+              }}
               className={`px-4 py-2 rounded-xl font-semibold border ${
                 customerMode === 'new'
                   ? 'bg-[#12bf3d] text-white border-[#12bf3d]'
@@ -331,18 +350,6 @@ export default function NewWorkOrderPage() {
                   }
                 />
               </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold mb-2">Megjegyzés</label>
-                <textarea
-                  className="w-full border border-slate-300 rounded-xl px-4 py-3 min-h-24"
-                  placeholder="Belső megjegyzés az ügyfélhez"
-                  value={newCustomer.notes}
-                  onChange={(e) =>
-                    setNewCustomer({ ...newCustomer, notes: e.target.value })
-                  }
-                />
-              </div>
             </div>
           )}
         </div>
@@ -351,6 +358,7 @@ export default function NewWorkOrderPage() {
           <h2 className="text-lg font-bold mb-4">Munka adatai</h2>
 
           <div className="grid md:grid-cols-2 gap-4">
+
             <div>
               <label className="block text-sm font-semibold mb-2">Dátum *</label>
               <input
@@ -413,16 +421,11 @@ export default function NewWorkOrderPage() {
               <label className="block text-sm font-semibold mb-2">Ár (Ft)</label>
               <input
                 type="number"
-                min="0"
-                step="1"
                 className="w-full border border-slate-300 rounded-xl px-4 py-3"
                 placeholder="Pl. 25000"
                 value={form.price}
                 onChange={(e) =>
-                  setForm({
-                    ...form,
-                    price: e.target.value.replace(/[^\d]/g, ''),
-                  })
+                  setForm({ ...form, price: e.target.value })
                 }
               />
             </div>
@@ -433,23 +436,13 @@ export default function NewWorkOrderPage() {
                 className="w-full border border-slate-300 rounded-xl px-4 py-3"
                 placeholder="A munkavégzés címe"
                 value={form.address}
-                onChange={(e) => setForm({ ...form, address: e.target.value })}
+                onChange={(e) => {
+                  locationManuallyEditedRef.current = true
+                  setForm({ ...form, address: e.target.value })
+                }}
               />
             </div>
 
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold mb-2">
-                Előzetes megjegyzés / feladatleírás
-              </label>
-              <textarea
-                className="w-full border border-slate-300 rounded-xl px-4 py-3 min-h-28"
-                placeholder="Pl. visszatérő csótányészlelés a konyhában, helyszínen pontosítani kell..."
-                value={form.treatment_description}
-                onChange={(e) =>
-                  setForm({ ...form, treatment_description: e.target.value })
-                }
-              />
-            </div>
           </div>
         </div>
 
@@ -469,6 +462,7 @@ export default function NewWorkOrderPage() {
             Ügyfelek oldal
           </Link>
         </div>
+
       </form>
     </main>
   )
