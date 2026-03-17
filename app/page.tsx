@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 type WorkOrder = {
@@ -81,6 +82,9 @@ function getStatusClasses(status: string | null) {
 }
 
 export default function HomePage() {
+  const router = useRouter()
+
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
@@ -93,7 +97,17 @@ export default function HomePage() {
   const selectedDateKey = formatDateKey(selectedDate)
 
   useEffect(() => {
-    async function loadDashboardData() {
+    async function initPage() {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession()
+
+      if (!session) {
+        router.replace('/login')
+        return
+      }
+
+      setCheckingAuth(false)
       setLoading(true)
 
       const [
@@ -126,8 +140,8 @@ export default function HomePage() {
       setCustomers((customersData || []) as Customer[])
     }
 
-    loadDashboardData()
-  }, [])
+    initPage()
+  }, [router])
 
   const customerMap = useMemo(() => {
     return new Map(customers.map((customer) => [customer.id, customer.name]))
@@ -151,10 +165,8 @@ export default function HomePage() {
     return visibleWorkOrders
       .filter((job) => {
         if (job.status === 'done') return false
-
         if (job.service_date > todayKey) return true
         if (job.service_date === todayKey && job.service_time) return true
-
         return false
       })
       .sort((a, b) => {
@@ -226,45 +238,70 @@ export default function HomePage() {
     }
   }
 
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    router.replace('/login')
+  }
+
+  if (checkingAuth) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-8">
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
+          Jogosultság ellenőrzése...
+        </div>
+      </main>
+    )
+  }
+
   return (
     <main className="mx-auto max-w-7xl px-4 py-8">
       <section className="overflow-hidden rounded-3xl bg-gradient-to-r from-[#388cc4] to-[#12bf3d] px-6 py-10 text-white shadow-[0_12px_28px_rgba(2,8,20,.08)] md:px-10">
-        <div className="max-w-3xl">
-          <div className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-white/80">
-            KártevőGuru App
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div className="max-w-3xl">
+            <div className="mb-3 text-sm font-semibold uppercase tracking-[0.2em] text-white/80">
+              KártevőGuru App
+            </div>
+
+            <h1 className="text-3xl font-extrabold tracking-tight md:text-5xl">
+              Digitális munkakezelő és munkalap rendszer
+            </h1>
+
+            <p className="mt-4 max-w-2xl text-sm text-white/90 md:text-base">
+              Itt kezeled az ügyfeleket, a felvett munkákat, a munkalapokat, a
+              fotódokumentációt és az aláírásokat egy helyen meg amit tudsz.
+            </p>
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href="/work-orders/new"
+                className="rounded-xl bg-white px-5 py-3 font-semibold text-slate-900 shadow-[0_8px_20px_rgba(0,0,0,.18)] hover:opacity-95"
+              >
+                + Új munka felvétele
+              </Link>
+
+              <Link
+                href="/work-orders"
+                className="rounded-xl border border-white/70 px-5 py-3 font-semibold text-white hover:bg-white/10"
+              >
+                Munkák megnyitása
+              </Link>
+
+              <Link
+                href="/customers"
+                className="rounded-xl border border-white/70 px-5 py-3 font-semibold text-white hover:bg-white/10"
+              >
+                Ügyfelek
+              </Link>
+            </div>
           </div>
 
-          <h1 className="text-3xl font-extrabold tracking-tight md:text-5xl">
-            Digitális munkakezelő és munkalap rendszer
-          </h1>
-
-          <p className="mt-4 max-w-2xl text-sm text-white/90 md:text-base">
-            Itt kezeled az ügyfeleket, a felvett munkákat, a munkalapokat, a
-            fotódokumentációt és az aláírásokat egy helyen.
-          </p>
-
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Link
-              href="/work-orders/new"
-              className="rounded-xl bg-white px-5 py-3 font-semibold text-slate-900 shadow-[0_8px_20px_rgba(0,0,0,.18)] hover:opacity-95"
-            >
-              + Új munka felvétele
-            </Link>
-
-            <Link
-              href="/work-orders"
-              className="rounded-xl border border-white/70 px-5 py-3 font-semibold text-white hover:bg-white/10"
-            >
-              Munkák megnyitása
-            </Link>
-
-            <Link
-              href="/customers"
-              className="rounded-xl border border-white/70 px-5 py-3 font-semibold text-white hover:bg-white/10"
-            >
-              Ügyfelek
-            </Link>
-          </div>
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="rounded-xl border border-white/70 px-5 py-3 font-semibold text-white hover:bg-white/10"
+          >
+            Kijelentkezés
+          </button>
         </div>
       </section>
 
