@@ -84,6 +84,7 @@ export default function HomePage() {
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [loading, setLoading] = useState(true)
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
 
   const today = useMemo(() => new Date(), [])
   const [selectedDate, setSelectedDate] = useState(today)
@@ -164,6 +165,56 @@ export default function HomePage() {
 
   const selectedDayLabel = formatFullHungarianDate(selectedDate)
   const isSelectedToday = isSameDay(selectedDate, today)
+
+  async function handleMarkDone(jobId: string) {
+    try {
+      setActionLoadingId(jobId)
+
+      const { error } = await supabase
+        .from('work_orders')
+        .update({ status: 'done' })
+        .eq('id', jobId)
+
+      if (error) {
+        alert('Nem sikerült elvégezettnek jelölni: ' + error.message)
+        return
+      }
+
+      setWorkOrders((prev) =>
+        prev.map((job) =>
+          job.id === jobId ? { ...job, status: 'done' } : job
+        )
+      )
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  async function handleDelete(jobId: string) {
+    const confirmed = window.confirm(
+      'Biztosan törölni szeretnéd ezt a munkát? Ez a művelet nem visszavonható.'
+    )
+
+    if (!confirmed) return
+
+    try {
+      setActionLoadingId(jobId)
+
+      const { error } = await supabase
+        .from('work_orders')
+        .delete()
+        .eq('id', jobId)
+
+      if (error) {
+        alert('Nem sikerült törölni a munkát: ' + error.message)
+        return
+      }
+
+      setWorkOrders((prev) => prev.filter((job) => job.id !== jobId))
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
 
   return (
     <main className="mx-auto max-w-7xl px-4 py-8">
@@ -276,10 +327,9 @@ export default function HomePage() {
               </div>
             ) : (
               selectedDayJobs.map((job) => (
-                <Link
+                <div
                   key={job.id}
-                  href={`/work-orders/${job.id}`}
-                  className="block rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-[1px] hover:shadow-[0_12px_28px_rgba(2,8,20,.08)]"
+                  className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:-translate-y-[1px] hover:shadow-[0_12px_28px_rgba(2,8,20,.08)]"
                 >
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div>
@@ -319,10 +369,33 @@ export default function HomePage() {
                     </div>
                   )}
 
-                  <div className="mt-4 text-sm font-semibold text-[#388cc4]">
-                    Munka megnyitása →
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <Link
+                      href={`/work-orders/${job.id}`}
+                      className="text-sm font-semibold text-[#388cc4]"
+                    >
+                      Munka megnyitása →
+                    </Link>
+
+                    <button
+                      type="button"
+                      onClick={() => handleMarkDone(job.id)}
+                      disabled={actionLoadingId === job.id || job.status === 'done'}
+                      className="rounded-xl bg-[#12bf3d] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {job.status === 'done' ? 'Elvégezve' : 'Elvégezve'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(job.id)}
+                      disabled={actionLoadingId === job.id}
+                      className="rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Törlés
+                    </button>
                   </div>
-                </Link>
+                </div>
               ))
             )}
           </div>
@@ -346,10 +419,9 @@ export default function HomePage() {
                 </div>
               ) : (
                 upcomingJobs.map((job) => (
-                  <Link
+                  <div
                     key={job.id}
-                    href={`/work-orders/${job.id}`}
-                    className="block rounded-2xl border border-slate-200 p-4 transition hover:bg-slate-50"
+                    className="rounded-2xl border border-slate-200 p-4 transition hover:bg-slate-50"
                   >
                     <div className="flex items-center justify-between gap-3 flex-wrap">
                       <div className="text-base font-semibold text-slate-900">
@@ -375,7 +447,7 @@ export default function HomePage() {
                       </div>
                     )}
 
-                    <div className="mt-3">
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
                       <span
                         className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${getStatusClasses(
                           job.status
@@ -383,8 +455,35 @@ export default function HomePage() {
                       >
                         {getStatusLabel(job.status)}
                       </span>
+
+                      <Link
+                        href={`/work-orders/${job.id}`}
+                        className="ml-auto text-sm font-semibold text-[#388cc4]"
+                      >
+                        Megnyitás →
+                      </Link>
                     </div>
-                  </Link>
+
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleMarkDone(job.id)}
+                        disabled={actionLoadingId === job.id || job.status === 'done'}
+                        className="rounded-xl bg-[#12bf3d] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {job.status === 'done' ? 'Elvégezve' : 'Elvégezve'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(job.id)}
+                        disabled={actionLoadingId === job.id}
+                        className="rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Törlés
+                      </button>
+                    </div>
+                  </div>
                 ))
               )}
             </div>
