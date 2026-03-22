@@ -99,6 +99,8 @@ export default function WorkOrderDetailsPage() {
     useState<TechnicianSignature | null>(null)
   const [loading, setLoading] = useState(true)
   const [errorText, setErrorText] = useState('')
+  const [treatmentDescription, setTreatmentDescription] = useState('')
+  const [savingDescription, setSavingDescription] = useState(false)
 
   useEffect(() => {
     async function loadWorkOrder() {
@@ -179,7 +181,10 @@ export default function WorkOrderDetailsPage() {
         return
       }
 
-      setWorkOrder(data as unknown as WorkOrderDetails)
+      const typedData = data as unknown as WorkOrderDetails
+
+      setWorkOrder(typedData)
+      setTreatmentDescription(typedData.treatment_description || '')
       setPhotos((photoData || []) as WorkOrderPhoto[])
       setProducts((productData || []) as WorkOrderProduct[])
       setTechnicianSignature(
@@ -194,6 +199,48 @@ export default function WorkOrderDetailsPage() {
   const customer = Array.isArray(workOrder?.customers)
     ? workOrder.customers[0]
     : workOrder?.customers
+
+  async function handleSaveTreatmentDescription() {
+    if (!workOrder) return
+
+    try {
+      setSavingDescription(true)
+
+      const { error } = await supabase
+        .from('work_orders')
+        .update({
+          treatment_description: treatmentDescription.trim() || null,
+        })
+        .eq('id', workOrder.id)
+
+      if (error) {
+        throw error
+      }
+
+      setWorkOrder((prev) =>
+        prev
+          ? {
+              ...prev,
+              treatment_description: treatmentDescription.trim() || null,
+            }
+          : prev
+      )
+
+      alert('A kezelés leírása elmentve.')
+    } catch (error) {
+      console.error(error)
+      alert(
+        error instanceof Error
+          ? error.message
+          : 'Nem sikerült elmenteni a kezelés leírását.'
+      )
+    } finally {
+      setSavingDescription(false)
+    }
+  }
+
+  const isDescriptionChanged =
+    (workOrder?.treatment_description || '') !== treatmentDescription
 
   return (
     <main className="max-w-5xl mx-auto px-4 py-8 space-y-6">
@@ -294,13 +341,6 @@ export default function WorkOrderDetailsPage() {
                     {getStatusLabel(workOrder.status)}
                   </span>
                 </div>
-
-                <div>
-                  <div className="text-slate-500 mb-1">Kezelés leírása</div>
-                  <div className="font-semibold whitespace-pre-wrap">
-                    {workOrder.treatment_description || '—'}
-                  </div>
-                </div>
               </div>
             </section>
 
@@ -351,6 +391,33 @@ export default function WorkOrderDetailsPage() {
               </div>
             </section>
           </div>
+
+          <section className="bg-white rounded-2xl p-5 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+              <h2 className="text-lg font-bold">Kezelés leírása</h2>
+
+              <button
+                type="button"
+                onClick={handleSaveTreatmentDescription}
+                disabled={savingDescription || !isDescriptionChanged}
+                className="px-5 py-3 rounded-xl font-semibold bg-[#12bf3d] text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {savingDescription ? 'Mentés...' : 'Leírás mentése'}
+              </button>
+            </div>
+
+            <textarea
+              className="w-full min-h-[160px] rounded-xl border border-slate-300 px-4 py-3 text-sm outline-none focus:border-[#388cc4]"
+              placeholder="Ide írd be a kezelés leírását, például: felhasznált technológia, kezelt területek, gócpontok, javaslatok..."
+              value={treatmentDescription}
+              onChange={(e) => setTreatmentDescription(e.target.value)}
+            />
+
+            <p className="mt-3 text-sm text-slate-500">
+              Ez a szöveg fog megjelenni a PDF munkalapon is a „Kezelés leírása”
+              blokkban.
+            </p>
+          </section>
 
           {workOrder.auto_warnings?.length || workOrder.auto_tasks?.length ? (
             <section className="bg-white rounded-2xl p-5 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
