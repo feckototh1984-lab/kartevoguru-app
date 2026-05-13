@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 type WorkOrder = {
@@ -82,8 +81,6 @@ function getStatusClasses(status: string | null) {
 }
 
 export default function HomePage() {
-  const router = useRouter()
-
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -98,15 +95,6 @@ export default function HomePage() {
 
   useEffect(() => {
     async function initPage() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession()
-
-      if (!session) {
-        router.replace('/login')
-        return
-      }
-
       setCheckingAuth(false)
       setLoading(true)
 
@@ -141,7 +129,7 @@ export default function HomePage() {
     }
 
     initPage()
-  }, [router])
+  }, [])
 
   const customerMap = useMemo(() => {
     return new Map(customers.map((customer) => [customer.id, customer.name]))
@@ -238,16 +226,11 @@ export default function HomePage() {
     }
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    router.replace('/login')
-  }
-
   if (checkingAuth) {
     return (
       <main className="mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-8">
         <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500 shadow-[0_12px_28px_rgba(2,8,20,.08)]">
-          Jogosultság ellenőrzése...
+          Betöltés...
         </div>
       </main>
     )
@@ -268,7 +251,7 @@ export default function HomePage() {
 
             <p className="mt-4 max-w-2xl text-sm text-white/90 md:text-base">
               Itt kezeled az ügyfeleket, a felvett munkákat, a munkalapokat, a
-              fotódokumentációt és az aláírásokat egy helyen meg amit tudsz.
+              fotódokumentációt és az aláírásokat egy helyen.
             </p>
 
             <div className="mt-6 flex flex-wrap gap-3">
@@ -294,14 +277,6 @@ export default function HomePage() {
               </Link>
             </div>
           </div>
-
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="rounded-xl border border-white/70 px-5 py-3 font-semibold text-white hover:bg-white/10"
-          >
-            Kijelentkezés
-          </button>
         </div>
       </section>
 
