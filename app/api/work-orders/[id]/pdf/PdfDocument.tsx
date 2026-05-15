@@ -340,7 +340,9 @@ export default function WorkOrderPdfDocument({
                 {workOrder.order_number || '—'}
               </Text>
 
-              <Text style={[styles.metaLabel, { marginTop: 10 }]}>Generálva</Text>
+              <Text style={[styles.metaLabel, { marginTop: 10 }]}>
+                Generálva
+              </Text>
               <Text style={styles.metaValueSmall}>
                 {formatDateTime(workOrder.created_at)}
               </Text>
@@ -391,7 +393,9 @@ export default function WorkOrderPdfDocument({
 
               <View style={styles.col}>
                 <View style={styles.sectionTitleWrap}>
-                  <Text style={styles.sectionTitle}>Szolgáltatás részletei</Text>
+                  <Text style={styles.sectionTitle}>
+                    Szolgáltatás részletei
+                  </Text>
                 </View>
 
                 <Text style={styles.line}>
@@ -426,10 +430,6 @@ export default function WorkOrderPdfDocument({
                   <Text style={styles.label}>Helyszín: </Text>
                   {workOrder.address || customer?.address || '—'}
                 </Text>
-                <Text style={styles.line}>
-                  <Text style={styles.label}>Státusz: </Text>
-                  {workOrder.status || '—'}
-                </Text>
               </View>
             </View>
 
@@ -438,29 +438,22 @@ export default function WorkOrderPdfDocument({
                 <Text style={styles.sectionTitle}>Kártevőirtó technikusok</Text>
               </View>
               <Text style={styles.techRow}>
-                {technicianSignature?.technician_name || 'Tóth Ferenc'} (Működési
-                nyilvántartási szám: SO-05/neo976-1/2025)
+                {technicianSignature?.technician_name || 'Tóth Ferenc'}{' '}
+                (Működési nyilvántartási szám: SO-05/neo976-1/2025)
               </Text>
             </View>
 
-            <View style={styles.section}>
-              <View style={styles.sectionTitleWrap}>
-                <Text style={styles.sectionTitle}>Munkalap adatai</Text>
+            {customer?.notes && (
+              <View style={styles.section}>
+                <View style={styles.sectionTitleWrap}>
+                  <Text style={styles.sectionTitle}>Megjegyzés</Text>
+                </View>
+
+                <View style={styles.softBox}>
+                  <Text>{customer.notes}</Text>
+                </View>
               </View>
-
-              <Text style={styles.line}>
-                <Text style={styles.label}>Ügyfél címe: </Text>
-                {customer?.address || '—'}
-              </Text>
-              <Text style={styles.line}>
-                <Text style={styles.label}>Ügyfél típusa: </Text>
-                {customer?.customer_type || '—'}
-              </Text>
-              <Text style={styles.line}>
-                <Text style={styles.label}>Megjegyzés: </Text>
-                {customer?.notes || '—'}
-              </Text>
-            </View>
+            )}
 
             <View style={styles.section}>
               <View style={styles.sectionTitleWrap}>
@@ -481,7 +474,9 @@ export default function WorkOrderPdfDocument({
                 <View style={styles.tableHeader}>
                   <Text style={styles.tableHeaderCell}>Termék</Text>
                   <Text style={styles.tableHeaderCell}>Mennyiség</Text>
-                  <Text style={styles.tableHeaderCell}>Alkalmazási technika</Text>
+                  <Text style={styles.tableHeaderCell}>
+                    Alkalmazási technika
+                  </Text>
                   <Text style={styles.tableHeaderCell}>Célzott kártevő</Text>
                 </View>
 
@@ -504,9 +499,13 @@ export default function WorkOrderPdfDocument({
                   ))
                 ) : (
                   <View style={styles.tableRow}>
-                    <Text style={styles.tableCell}>Nincs még külön rögzítve</Text>
+                    <Text style={styles.tableCell}>
+                      Nincs még külön rögzítve
+                    </Text>
                     <Text style={styles.tableCell}>—</Text>
-                    <Text style={styles.tableCell}>{workOrder.job_type || '—'}</Text>
+                    <Text style={styles.tableCell}>
+                      {workOrder.job_type || '—'}
+                    </Text>
                     <Text style={styles.tableCell}>
                       {workOrder.target_pest || '—'}
                     </Text>
@@ -522,7 +521,8 @@ export default function WorkOrderPdfDocument({
                 </Text>
               </View>
 
-              {workOrder.auto_warnings?.length || workOrder.auto_tasks?.length ? (
+              {workOrder.auto_warnings?.length ||
+              workOrder.auto_tasks?.length ? (
                 <View style={styles.alertsGrid}>
                   <View style={styles.alertBox}>
                     <Text style={[styles.alertTitle, { color: '#be123c' }]}>
