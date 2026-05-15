@@ -9,7 +9,6 @@ type PublicCustomer = {
   phone: string | null
   email: string | null
   address: string | null
-  customer_type: string | null
   notes: string | null
 }
 
@@ -40,7 +39,6 @@ type PublicWorkOrder = {
   target_pest: string | null
   address: string | null
   treatment_description: string | null
-  status: string | null
   created_at: string | null
   customer_signature_url: string | null
   signed_at: string | null
@@ -239,24 +237,29 @@ export default async function PublicWorkOrderPage({
 
               <div className="space-y-1.5">
                 <p>
-                  <span className="font-semibold">Szolgáltató:</span> KártevőGuru
+                  <span className="font-semibold">Szolgáltató:</span>{' '}
+                  KártevőGuru
                 </p>
                 <p>
                   <span className="font-semibold">Felelős személy:</span>{' '}
                   {technicianSignature?.technician_name || 'Tóth Ferenc'}
                 </p>
                 <p>
-                  <span className="font-semibold">Telefon:</span> +36 30 602 0650
+                  <span className="font-semibold">Telefon:</span> +36 30 602
+                  0650
                 </p>
                 <p>
-                  <span className="font-semibold">E-mail:</span> info@kartevoguru.hu
+                  <span className="font-semibold">E-mail:</span>{' '}
+                  info@kartevoguru.hu
                 </p>
                 <p>
                   <span className="font-semibold">Székhely / cím:</span> 8700
                   Marcali, Borsó-hegyi út 4779
                 </p>
                 <p>
-                  <span className="font-semibold">Működési nyilv. szám:</span>{' '}
+                  <span className="font-semibold">
+                    Működési nyilv. szám:
+                  </span>{' '}
                   SO-05/neo976-1/2025
                 </p>
                 <p>
@@ -313,10 +316,6 @@ export default async function PublicWorkOrderPage({
                   <span className="font-semibold">Helyszín:</span>{' '}
                   {workOrder.address || customer?.address || '—'}
                 </p>
-                <p>
-                  <span className="font-semibold">Státusz:</span>{' '}
-                  {workOrder.status || '—'}
-                </p>
               </div>
             </section>
           </div>
@@ -354,10 +353,14 @@ export default async function PublicWorkOrderPage({
                     key={product.id}
                     className="grid grid-cols-4 border-t border-slate-200 text-sm"
                   >
-                    <div className="px-3 py-3">{product.product_name || '—'}</div>
+                    <div className="px-3 py-3">
+                      {product.product_name || '—'}
+                    </div>
                     <div className="px-3 py-3">{product.quantity || '—'}</div>
                     <div className="px-3 py-3">{product.method || '—'}</div>
-                    <div className="px-3 py-3">{product.target_pest || '—'}</div>
+                    <div className="px-3 py-3">
+                      {product.target_pest || '—'}
+                    </div>
                   </div>
                 ))
               ) : (
@@ -365,7 +368,9 @@ export default async function PublicWorkOrderPage({
                   <div className="px-3 py-3">Nincs még külön rögzítve</div>
                   <div className="px-3 py-3">—</div>
                   <div className="px-3 py-3">{workOrder.job_type || '—'}</div>
-                  <div className="px-3 py-3">{workOrder.target_pest || '—'}</div>
+                  <div className="px-3 py-3">
+                    {workOrder.target_pest || '—'}
+                  </div>
                 </div>
               )}
             </div>
@@ -418,7 +423,8 @@ export default async function PublicWorkOrderPage({
               </div>
             ) : (
               <div className="min-h-[56px] whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                A helyszíni tájékoztatás szerinti óvintézkedések betartása javasolt.
+                A helyszíni tájékoztatás szerinti óvintézkedések betartása
+                javasolt.
               </div>
             )}
           </section>
@@ -458,7 +464,9 @@ export default async function PublicWorkOrderPage({
               </div>
 
               <div>
-                <div className="mb-4 text-sm text-slate-500">Ügyfél aláírás</div>
+                <div className="mb-4 text-sm text-slate-500">
+                  Ügyfél aláírás
+                </div>
 
                 {workOrder.customer_signature_url ? (
                   <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
