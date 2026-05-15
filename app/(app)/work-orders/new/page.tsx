@@ -171,7 +171,7 @@ export default function NewWorkOrderPage() {
       target_pest: form.target_pest,
       price: form.price ? Number(form.price) : null,
       treatment_description: form.treatment_description || null,
-      status: 'scheduled',
+      status: 'elvégezve',
     }
 
     const { error: workOrderError } = await supabase
